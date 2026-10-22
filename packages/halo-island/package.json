@@ -1,0 +1,16 @@
+{
+  "name": "halo-island",
+  "version": "0.1.0",
+  "description": "Dynamic Island for React Native: iOS Live Activities, an Android island and Live Updates, and an in-app island — from one JSON design.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": ["src", "android", "ios", "app.plugin.js", "expo-module.config.json", "!**/build", "!**/__tests__"],
+  "keywords": ["react-native", "expo", "dynamic-island", "live-activities", "live-updates", "android", "ios", "notch"],
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-reanimated": ">=4.0.0"
+  }
+}
