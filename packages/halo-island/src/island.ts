@@ -15,7 +15,7 @@ export interface Capabilities {
 
 interface NativeHaloIsland {
   start(id: string, template: string, state: string, options: { overlay: boolean; notification: boolean }): void;
-  update(id: string, state: string): void;
+  update(id: string, state: string, alert: boolean): void;
   end(id: string): void;
   endAll(): void;
   capabilities(): Capabilities;
@@ -50,8 +50,11 @@ export interface StartOptions {
 export interface LiveIsland {
   readonly id: string;
   readonly state: IslandState;
-  /** Merges into the current state; only changed keys need to be sent. */
-  update(patch: IslandState): void;
+  /**
+   * Merges into the current state; only changed keys need to be sent.
+   * `alert: true` pops the island open for a moment — for moments that matter ("Rider arrived").
+   */
+  update(patch: IslandState, options?: { alert?: boolean }): void;
   end(): void;
   /** Subscribe to a button action of this island. Returns an unsubscribe function. */
   on(action: string, handler: () => void): () => void;
@@ -64,6 +67,8 @@ export interface Active {
   options: StartOptions;
   /** Bumped on each start so the host can replay the appear animation. */
   key: number;
+  /** Bumped on each alerting update. */
+  alert: number;
 }
 
 // region Store
@@ -164,7 +169,7 @@ export function toNative(template: IslandTemplate) {
 /** Starts an island on every surface the device supports. */
 export function start(template: IslandTemplate, state: IslandState = {}, options: StartOptions = {}): LiveIsland {
   const id = options.id ?? `island-${Date.now().toString(36)}-${(counter++).toString(36)}`;
-  const entry: Active = { id, template, state: { ...state }, options, key: counter++ };
+  const entry: Active = { id, template, state: { ...state }, options, key: counter++, alert: 0 };
   islands.delete(id);
   islands.set(id, entry);
 
@@ -181,10 +186,11 @@ export function start(template: IslandTemplate, state: IslandState = {}, options
   const live: LiveIsland = {
     id,
     get state() { return entry.state; },
-    update(patch) {
+    update(patch, opts) {
       if (!islands.has(id)) return;
       entry.state = { ...entry.state, ...patch };
-      if (native && (system || options.overlay)) native.update(id, JSON.stringify(entry.state));
+      if (opts?.alert) entry.alert++;
+      if (native && (system || options.overlay)) native.update(id, JSON.stringify(entry.state), !!opts?.alert);
       changed();
     },
     end() {

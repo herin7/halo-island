@@ -1,14 +1,20 @@
 import { requireNativeView } from 'expo';
 import { ComponentType, ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useWindowDimensions } from 'react-native';
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { Active, Cutout, emitAction, hex, native, springOf, store } from './island';
-import { DEFAULT_THEME, IslandNode, IslandState, IslandTheme, TextStyle, fill, num } from './spec';
+import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTheme, TextStyle, fill, num } from './spec';
 
 let NativeIcon: ComponentType<{ name: string; color?: string; style?: ViewStyle }> | null = null;
 try {
   if (native) NativeIcon = requireNativeView('HaloIsland');
+} catch {}
+
+// Optional: only apps that install lottie-react-native pay for it.
+let LottieView: ComponentType<{ source: { uri: string }; autoPlay?: boolean; loop?: boolean; style?: ViewStyle }> | null = null;
+try {
+  LottieView = require('lottie-react-native').default;
 } catch {}
 
 const WEIGHT = { regular: '400', medium: '500', semibold: '600', bold: '700', heavy: '800' } as const;
@@ -18,7 +24,11 @@ const COMPACT_HEIGHT = 37;
 
 interface Ctx { state: IslandState; theme: Required<IslandTheme>; onAction: (action: string) => void }
 
-function Node({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolean }): ReactNode {
+function Node(props: { node: IslandNode; ctx: Ctx; inRow?: boolean }): ReactNode {
+  return props.node.effect ? <Motion effect={props.node.effect}><Body {...props} /></Motion> : <Body {...props} />;
+}
+
+function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolean }): ReactNode {
   const { state, theme } = ctx;
   switch (node.type) {
     case 'row':
@@ -71,6 +81,14 @@ function Node({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
           ))}
         </View>
       );
+    }
+    case 'track': {
+      const color = node.color ?? theme.accent;
+      return <Track value={num(node.value, state)} marker={fill(node.marker, state)} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} grow={inRow} />;
+    }
+    case 'lottie': {
+      const size = node.size ?? 28;
+      return LottieView ? <LottieView source={{ uri: fill(node.uri, state) }} autoPlay loop={node.loop ?? true} style={{ width: size, height: size }} /> : null;
     }
     case 'timer':
       return <Timer to={num(node.to, state)} countUp={node.countUp} style={textStyle(node.style, theme)} />;
@@ -136,6 +154,48 @@ function Bar({ value, height, color, track, grow }: { value: number; height: num
   return (
     <View style={{ height, borderRadius: height / 2, backgroundColor: track, overflow: 'hidden', flexGrow: grow ? 1 : undefined }}>
       <Animated.View style={[{ height, borderRadius: height / 2, backgroundColor: color }, fillStyle]} />
+    </View>
+  );
+}
+
+/** Looping motion. Each effect is one Reanimated loop; reduced motion turns them all off. */
+function Motion({ effect, children }: { effect: Effect; children: ReactNode }) {
+  const reduced = useReducedMotion();
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (reduced) return;
+    const easing = Easing.inOut(Easing.quad);
+    t.value = effect === 'spin'
+      ? withRepeat(withTiming(1, { duration: 1100, easing: Easing.linear }), -1)
+      : effect === 'wiggle'
+        ? withRepeat(withSequence(withTiming(1, { duration: 70 }), withTiming(-1, { duration: 140 }), withTiming(1, { duration: 140 }), withTiming(0, { duration: 70 }), withDelay(1400, withTiming(0, { duration: 0 }))), -1)
+        : withRepeat(withTiming(1, { duration: effect === 'bounce' ? 420 : 900, easing }), -1, true);
+  }, [effect, reduced]);
+  const style = useAnimatedStyle(() => {
+    switch (effect) {
+      case 'pulse': return { transform: [{ scale: 1 + t.value * 0.14 }] };
+      case 'bounce': return { transform: [{ translateY: -t.value * 4 }] };
+      case 'spin': return { transform: [{ rotate: `${t.value * 360}deg` }] };
+      case 'wiggle': return { transform: [{ rotate: `${t.value * 10}deg` }] };
+      case 'shimmer': return { opacity: 1 - t.value * 0.5 };
+    }
+  });
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+/** A bar with a marker riding on it; the marker eases to each new value. */
+function Track({ value, marker, height, color, track, grow }: { value: number; marker: string; height: number; color: string; track: string; grow?: boolean }) {
+  const p = useSharedValue(clamp(value));
+  const [width, setWidth] = useState(0);
+  useEffect(() => { p.value = withTiming(clamp(value), { duration: 900, easing: Easing.out(Easing.cubic) }); }, [value]);
+  const markerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: p.value * Math.max(0, width - 22) }] }));
+  const fillStyle = useAnimatedStyle(() => ({ width: `${p.value * 100}%` }));
+  return (
+    <View style={{ height: 24, justifyContent: 'center', flexGrow: grow ? 1 : undefined }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      <View style={{ height, borderRadius: height / 2, backgroundColor: track, overflow: 'hidden' }}>
+        <Animated.View style={[{ height, backgroundColor: color, borderRadius: height / 2 }, fillStyle]} />
+      </View>
+      <Animated.Text style={[{ position: 'absolute', left: 0, width: 22, textAlign: 'center', fontSize: 16 }, markerStyle]}>{marker}</Animated.Text>
     </View>
   );
 }
@@ -231,6 +291,12 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
   };
   useEffect(() => { if (isOpen) bump(); return () => clearTimeout(collapseTimer.current); }, [isOpen]);
   useEffect(() => setExpanded(!!entry.options.expanded), [entry.key]);
+  useEffect(() => {
+    if (!entry.alert || !hasBody) return;
+    setExpanded(true);
+    bump();
+    if (!reduced) shake.value = withSequence(withTiming(1, { duration: 60 }), withTiming(-1, { duration: 120 }), withTiming(1, { duration: 120 }), withTiming(0, { duration: 60 }));
+  }, [entry.alert]);
 
   // Born from the camera cutout (or a dot), then springs to its real size.
   const seed = { w: geo.cutout?.width ?? 40, h: geo.cutout?.height ?? geo.height };
@@ -240,6 +306,11 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
   const opacity = useSharedValue(0);
   const bodyOpacity = useSharedValue(0);
   const drag = useSharedValue(0);
+  const shake = useSharedValue(0);
+  const glow = useSharedValue(0);
+  useEffect(() => {
+    if (theme.glow && !reduced) glow.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) }), -1, true);
+  }, [theme.glow, reduced]);
 
   const go = (v: number) => (spring ? withSpring(v, spring) : withTiming(v, { duration: 0 }));
   const fade = (v: number, delay = 0) => (reduced ? withTiming(v, { duration: 0 }) : withDelay(delay, withTiming(v, { duration: 180 })));
@@ -267,7 +338,9 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
     height: h.value,
     borderRadius: radius.value,
     opacity: opacity.value,
-    transform: [{ translateY: drag.value }],
+    borderColor: theme.glow ? interpolateColor(glow.value, [0, 1], [theme.border, theme.glow]) : theme.border,
+    borderWidth: theme.glow ? 1.5 : StyleSheet.hairlineWidth,
+    transform: [{ translateY: drag.value }, { rotate: `${shake.value * 2.5}deg` }],
   }));
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOpacity.value }));
 
@@ -311,7 +384,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
 
       <Animated.View
         {...pan.panHandlers}
-        style={[styles.island, { top: geo.top, backgroundColor: theme.background, borderColor: theme.border }, islandStyle]}
+        style={[styles.island, { top: geo.top, backgroundColor: theme.background }, islandStyle]}
       >
         <Pressable
           onPress={onPress}
@@ -333,7 +406,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
 }
 
 const styles = StyleSheet.create({
-  island: { position: 'absolute', alignSelf: 'center', overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
+  island: { position: 'absolute', alignSelf: 'center', overflow: 'hidden' },
   fill: { flex: 1, alignItems: 'center' },
   compactRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
   measure: { position: 'absolute', top: -10000, left: 0, opacity: 0 },

@@ -1,5 +1,7 @@
 package expo.modules.haloisland
 
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.ColorStateList
@@ -22,6 +24,8 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
+import android.widget.FrameLayout
 import android.widget.Chronometer
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -83,6 +87,12 @@ internal class Renderer(
 
   fun build(node: JSONObject?, path: String = "0"): View? {
     node ?: return null
+    val view = body(node, path) ?: return null
+    node.optString("effect").takeIf { it.isNotEmpty() }?.let { loop(view, it) }
+    return view
+  }
+
+  private fun body(node: JSONObject, path: String): View? {
     return when (node.optString("type")) {
       "row" -> box(node, LinearLayout.HORIZONTAL, path)
       "column" -> box(node, LinearLayout.VERTICAL, path)
@@ -95,6 +105,9 @@ internal class Renderer(
       "bar" -> BarView(context, node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.22f)))
         .also { animate(it::set, path, num(node.opt("value"), state)) }
       "steps" -> steps(node, path)
+      "track" -> TrackView(context, node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.22f)), fill(node.optString("marker"), state), px(node.optInt("height", 4)))
+        .also { animate(it::set, path, num(node.opt("value"), state)) }
+      "lottie" -> lottie(node)
       "timer" -> timer(node)
       "button" -> button(node)
       "spacer" -> View(context)
@@ -145,7 +158,7 @@ internal class Renderer(
         grows && isRow -> LinearLayout.LayoutParams(0, explicit?.height ?: wrap, 1f)
         grows -> LinearLayout.LayoutParams(explicit?.width ?: match, 0, 1f)
         type == "spacer" -> child.optInt("size").let { s -> if (isRow) LinearLayout.LayoutParams(px(s), 1) else LinearLayout.LayoutParams(1, px(s)) }
-        type in BARS -> LinearLayout.LayoutParams(match, px(child.optInt("height", 4)))
+        type in BARS -> LinearLayout.LayoutParams(match, barHeight(child))
         stretch -> LinearLayout.LayoutParams(match, explicit?.height ?: wrap)
         explicit != null -> LinearLayout.LayoutParams(explicit.width, explicit.height)
         else -> LinearLayout.LayoutParams(wrap, wrap)
@@ -156,7 +169,7 @@ internal class Renderer(
       if (layout.childCount > 0 && justify == "between") {
         layout.addView(View(context), if (isRow) LinearLayout.LayoutParams(gap, 1, 1f) else LinearLayout.LayoutParams(1, gap, 1f))
       }
-      if (type in BARS && isRow) params.height = px(child.optInt("height", 4))
+      if (type in BARS && isRow) params.height = barHeight(child)
       layout.addView(view, params)
     }
     return layout
@@ -206,6 +219,35 @@ internal class Renderer(
       runCatching { view.setImageURI(Uri.parse(uri)) }
     }
     return view.sized(node.optInt("size", 32))
+  }
+
+  /** Looping motion; stops itself when the view leaves the window so rebuilt trees don't leak animators. */
+  private fun loop(view: View, effect: String) {
+    if (!ValueAnimator.areAnimatorsEnabled()) return
+    val animator = when (effect) {
+      "pulse" -> ObjectAnimator.ofPropertyValuesHolder(view, PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.14f), PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.14f)).apply { duration = 900 }
+      "bounce" -> ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, 0f, -dp(4f)).apply { duration = 420 }
+      "spin" -> ObjectAnimator.ofFloat(view, View.ROTATION, 0f, 360f).apply { duration = 1100; interpolator = LinearInterpolator(); repeatMode = ValueAnimator.RESTART }
+      "wiggle" -> ObjectAnimator.ofFloat(view, View.ROTATION, 0f, 10f, -10f, 10f, 0f, 0f, 0f, 0f, 0f, 0f).apply { duration = 1800; repeatMode = ValueAnimator.RESTART }
+      "shimmer" -> ObjectAnimator.ofFloat(view, View.ALPHA, 1f, 0.5f).apply { duration = 900 }
+      else -> return
+    }
+    animator.repeatCount = ValueAnimator.INFINITE
+    if (effect == "pulse" || effect == "bounce" || effect == "shimmer") animator.repeatMode = ValueAnimator.REVERSE
+    view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+      override fun onViewAttachedToWindow(v: View) = animator.start()
+      override fun onViewDetachedFromWindow(v: View) = animator.cancel()
+    })
+  }
+
+  /** Lottie only if the app ships it (lottie-react-native brings lottie-android). */
+  private fun lottie(node: JSONObject): View? {
+    if (!HAS_LOTTIE) return null
+    return com.airbnb.lottie.LottieAnimationView(context).apply {
+      setAnimationFromUrl(fill(node.optString("uri"), state))
+      repeatCount = if (node.optBoolean("loop", true)) ValueAnimator.INFINITE else 0
+      playAnimation()
+    }.sized(node.optInt("size", 28))
   }
 
   private fun steps(node: JSONObject, path: String): View {
@@ -288,6 +330,8 @@ internal class Renderer(
     else if (w >= 600) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
   }
 
+  private fun barHeight(node: JSONObject) = if (node.optString("type") == "track") px(24) else px(node.optInt("height", 4))
+
   private fun View.sized(sizeDp: Int) = apply { layoutParams = LinearLayout.LayoutParams(dp(sizeDp).toInt(), dp(sizeDp).toInt()) }
   private fun dp(value: Float) = value * density
   private fun dp(value: Int) = value * density
@@ -297,7 +341,8 @@ internal class Renderer(
     private const val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
     private const val match = LinearLayout.LayoutParams.MATCH_PARENT
     private val FIXED_SIZE = setOf("icon", "image", "ring", "spacer")
-    private val BARS = setOf("bar", "steps")
+    private val BARS = setOf("bar", "steps", "track")
+    private val HAS_LOTTIE = runCatching { Class.forName("com.airbnb.lottie.LottieAnimationView") }.isSuccess
     private val MAIN = Handler(Looper.getMainLooper())
     // ponytail: unbounded, fine for a handful of avatars/artwork; LruCache if apps rotate many images.
     private val IMAGES = mutableMapOf<String, android.graphics.Bitmap>()
@@ -344,5 +389,32 @@ internal class BarView(context: Context, color: Int, track: Int) : View(context)
     if (value <= 0f) return
     rect.set(0f, 0f, max(h, width * value), h)
     canvas.drawRoundRect(rect, h / 2, h / 2, fillPaint)
+  }
+}
+
+/** A bar with a text marker riding along it. */
+internal class TrackView(context: Context, color: Int, track: Int, marker: String, barHeight: Int) : FrameLayout(context) {
+  private val bar = BarView(context, color, track)
+  private val label = TextView(context).apply {
+    text = marker
+    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+    includeFontPadding = false
+  }
+  private var value = 0f
+
+  init {
+    addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, barHeight, Gravity.CENTER_VERTICAL))
+    addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+  }
+
+  fun set(v: Float) {
+    value = v
+    bar.set(v)
+    label.translationX = v * max(0, width - label.width)
+  }
+
+  override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+    super.onLayout(changed, l, t, r, b)
+    label.translationX = value * max(0, width - label.width)
   }
 }

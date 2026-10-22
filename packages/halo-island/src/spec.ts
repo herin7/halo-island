@@ -32,7 +32,12 @@ export interface BoxStyle {
   grow?: boolean;
 }
 
-export type IslandNode =
+/** Looping motion for any node. Respects reduced motion. */
+export type Effect = 'pulse' | 'bounce' | 'spin' | 'wiggle' | 'shimmer';
+
+export type IslandNode = NodeBody & { effect?: Effect };
+
+type NodeBody =
   | { type: 'row' | 'column'; children: IslandNode[]; style?: BoxStyle }
   | { type: 'text'; text: string; style?: TextStyle }
   /** Built-in name (see ICONS), an SF Symbol on iOS, or an Android drawable name. */
@@ -40,6 +45,10 @@ export type IslandNode =
   | { type: 'image'; uri: string; size?: number; radius?: number }
   | { type: 'ring'; value: Num; size?: number; thickness?: number; color?: Color; track?: Color }
   | { type: 'bar'; value: Num; height?: number; color?: Color; track?: Color }
+  /** A bar with `marker` (emoji or text) riding along it at `value` — a rider heading to your door. */
+  | { type: 'track'; value: Num; marker: string; height?: number; color?: Color; track?: Color }
+  /** Lottie from a URL. Needs `lottie-react-native` in the app; renders nothing without it. */
+  | { type: 'lottie'; uri: string; size?: number; loop?: boolean }
   /** `count` segments; `value` is how many are done (fractions fill part of one). Order stages, journeys, onboarding. */
   | { type: 'steps'; value: Num; count: number; height?: number; color?: Color; track?: Color }
   /** Counts down to (or up from) an epoch-millis timestamp. Runs natively, no updates needed. */
@@ -55,6 +64,8 @@ export interface IslandTheme {
   border?: Color;
   /** Expanded corner radius. Compact is always a full pill. */
   radius?: number;
+  /** Border breathes in this color. */
+  glow?: Color;
 }
 
 export type MotionPreset = 'bouncy' | 'snappy' | 'smooth' | 'none';
@@ -82,6 +93,7 @@ export const DEFAULT_THEME: Required<IslandTheme> = {
   accent: '#5FCB9C',
   border: 'rgba(255,255,255,0.10)',
   radius: 32,
+  glow: '',
 };
 
 // region Builders — sugar for the JSON above, so apps and agents write less.
@@ -105,6 +117,10 @@ export const steps = (value: Num, count: number, opts?: { height?: number; color
 export const timer = (to: Num, opts?: { countUp?: boolean; style?: TextStyle }): IslandNode => ({ type: 'timer', to, ...opts });
 export const button = (action: string, label?: string, opts?: { icon?: string; color?: Color; textColor?: Color }): IslandNode => ({ type: 'button', action, label, ...opts });
 export const spacer = (size?: number): IslandNode => ({ type: 'spacer', size });
+export const track = (value: Num, marker: string, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'track', value, marker, ...opts });
+export const lottie = (uri: string, opts?: { size?: number; loop?: boolean }): IslandNode => ({ type: 'lottie', uri, ...opts });
+/** Adds looping motion: `fx(text('🛵'), 'bounce')`. */
+export const fx = (node: IslandNode, effect: Effect): IslandNode => ({ ...node, effect });
 
 // endregion
 

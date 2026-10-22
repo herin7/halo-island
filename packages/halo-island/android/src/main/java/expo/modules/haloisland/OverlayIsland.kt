@@ -2,6 +2,8 @@ package expo.modules.haloisland
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
+import android.animation.ArgbEvaluator
+import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.PixelFormat
@@ -51,6 +53,7 @@ internal class OverlayIsland(private val context: Context) {
   private var entry: Islands.Entry? = null
   private val values = mutableMapOf<String, Float>()
   private val autoCollapse = Runnable { setExpanded(false) }
+  private var glow: ValueAnimator? = null
 
   fun show(next: Islands.Entry) {
     if (entry?.id != next.id) {
@@ -62,7 +65,20 @@ internal class OverlayIsland(private val context: Context) {
     render()
   }
 
+  /** An alerting update: open up and give a little shake. */
+  fun alert() {
+    val container = root ?: return
+    setExpanded(true)
+    scheduleAutoCollapse()
+    container.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+    if (animationsEnabled()) {
+      ObjectAnimator.ofFloat(container, View.ROTATION, 0f, 2.5f, -2.5f, 2.5f, 0f).setDuration(360).start()
+    }
+  }
+
   fun remove() {
+    glow?.cancel()
+    glow = null
     handler.removeCallbacksAndMessages(null)
     root?.let { view ->
       view.animate().alpha(0f).scaleX(0.86f).scaleY(0.86f).setDuration(if (animationsEnabled()) 180L else 0L)
@@ -143,7 +159,28 @@ internal class OverlayIsland(private val context: Context) {
       expandedHost.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
     }
     container.contentDescription = describe(current)
+    syncGlow(current)
     resize()
+  }
+
+  /** Breathes the border between the theme border and the glow color. */
+  private fun syncGlow(current: Islands.Entry) {
+    val theme = current.template.optJSONObject("theme")
+    val color = theme?.optString("glow")?.takeIf { it.isNotEmpty() }?.let { runCatching { android.graphics.Color.parseColor(it) }.getOrNull() }
+    if (color == null || !animationsEnabled()) {
+      glow?.cancel()
+      glow = null
+      return
+    }
+    if (glow != null) return
+    val base = Theme(theme).border
+    glow = ValueAnimator.ofObject(ArgbEvaluator(), base, color).apply {
+      duration = 1400
+      repeatCount = ValueAnimator.INFINITE
+      repeatMode = ValueAnimator.REVERSE
+      addUpdateListener { (root?.background as? android.graphics.drawable.GradientDrawable)?.setStroke(dp(1) + 1, it.animatedValue as Int) }
+      start()
+    }
   }
 
   private fun compactRow(renderer: Renderer, current: Islands.Entry, path: String): LinearLayout {

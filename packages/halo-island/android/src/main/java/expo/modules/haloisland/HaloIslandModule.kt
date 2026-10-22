@@ -69,9 +69,9 @@ class HaloIslandModule : Module() {
       }
     }
 
-    Function("update") { id: String, state: String ->
+    Function("update") { id: String, state: String, alert: Boolean ->
       val ctx = context
-      UiThreadUtil.runOnUiThread { Islands.update(ctx, id, JSONObject(state)) }
+      UiThreadUtil.runOnUiThread { Islands.update(ctx, id, JSONObject(state), alert) }
     }
 
     Function("end") { id: String ->

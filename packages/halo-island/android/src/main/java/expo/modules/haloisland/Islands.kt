@@ -30,10 +30,11 @@ internal object Islands {
     present(context, entry)
   }
 
-  fun update(context: Context, id: String, state: JSONObject) {
+  fun update(context: Context, id: String, state: JSONObject, alert: Boolean) {
     val entry = entries[id] ?: return
     entry.state = state
     present(context, entry)
+    if (alert && overlayEntry() === entry) IslandService.alert()
   }
 
   fun end(context: Context, id: String) {
@@ -214,6 +215,10 @@ class IslandService : Service() {
       active?.let { it.present(entry); return }
       // Throws if the app is in the background (Android 12+); the island appears on next foreground start.
       runCatching { ContextCompat.startForegroundService(context, Intent(context, IslandService::class.java)) }
+    }
+
+    internal fun alert() {
+      active?.island?.alert()
     }
 
     internal fun stop(context: Context) {
