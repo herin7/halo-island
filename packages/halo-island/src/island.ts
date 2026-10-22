@@ -1,5 +1,5 @@
 import { requireOptionalNativeModule } from 'expo';
-import { AppRegistry, Platform, processColor } from 'react-native';
+import { AppRegistry, Image, Platform, processColor } from 'react-native';
 
 import { IslandState, IslandTemplate, Motion, payloadSize } from './spec';
 
@@ -133,7 +133,7 @@ if (Platform.OS === 'android') {
 const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secondary', 'accent', 'border', 'textColor', 'glow']);
 
 export const MOTION = {
-  bouncy: { stiffness: 380, damping: 24 },
+  bouncy: { stiffness: 380, damping: 28 },
   snappy: { stiffness: 700, damping: 45 },
   smooth: { stiffness: 220, damping: 30 },
 } as const;
@@ -234,3 +234,9 @@ export async function requestPermissions(opts: { overlay?: boolean } = {}): Prom
 }
 
 export const openLiveUpdateSettings = () => native?.openLiveUpdateSettings?.();
+
+/**
+ * A bundled image as a uri every surface can load: `image(asset(require('./logo.png')))`.
+ * Dev builds serve it from Metro; release builds resolve to the packaged resource.
+ */
+export const asset = (module: number): string => Image.resolveAssetSource(module)?.uri ?? '';

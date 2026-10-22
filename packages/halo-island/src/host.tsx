@@ -1,10 +1,10 @@
 import { requireNativeView } from 'expo';
 import { ComponentType, ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useWindowDimensions } from 'react-native';
-import Animated, { Easing, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, FadeInDown, FadeOutUp, LinearTransition, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { Active, Cutout, emitAction, hex, native, springOf, store } from './island';
-import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTheme, TextStyle, fill, num } from './spec';
+import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTheme, TextStyle, fill, fontFor, num, tracking, visible } from './spec';
 
 let NativeIcon: ComponentType<{ name?: string; path?: string; viewBox?: number; stroke?: number; color?: string; style?: ViewStyle }> | null = null;
 try {
@@ -25,6 +25,7 @@ const COMPACT_HEIGHT = 37;
 interface Ctx { state: IslandState; theme: Required<IslandTheme>; onAction: (action: string) => void }
 
 function Node(props: { node: IslandNode; ctx: Ctx; inRow?: boolean }): ReactNode {
+  if (!visible(props.node, props.ctx.state)) return null;
   return props.node.effect ? <Motion effect={props.node.effect}><Body {...props} /></Motion> : <Body {...props} />;
 }
 
@@ -59,8 +60,17 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
         </View>
       );
     }
-    case 'text':
-      return <Text style={textStyle(node.style, theme)} numberOfLines={node.style?.lines ?? 1}>{fill(node.text, state)}</Text>;
+    case 'text': {
+      const value = fill(node.text, state);
+      const style = textStyle(node.style, theme);
+      if (!node.style?.mono) return <Text style={style} numberOfLines={node.style?.lines ?? 1}>{value}</Text>;
+      // Numbers roll: the new value slides up into place as the old one leaves.
+      return (
+        <Animated.View layout={LinearTransition.duration(180)} style={{ overflow: 'hidden' }}>
+          <Animated.Text key={value} entering={FadeInDown.duration(260)} exiting={FadeOutUp.duration(180)} style={style} numberOfLines={1}>{value}</Animated.Text>
+        </Animated.View>
+      );
+    }
     case 'icon': {
       const size = node.size ?? 18;
       return NativeIcon ? (
@@ -77,9 +87,9 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     case 'image': {
       const size = node.size ?? 32;
       const uri = fill(node.uri, state);
-      const box = { width: size, height: size, borderRadius: node.radius ?? 8 };
+      const box = { width: node.width ?? size, height: size, borderRadius: node.radius ?? 8 };
       // An empty uri is a placeholder slot (e.g. a result that hasn't arrived yet).
-      return uri ? <Image source={{ uri }} style={box} /> : <View style={[box, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />;
+      return uri ? <Image source={{ uri }} style={box} resizeMode={node.fit ?? 'cover'} /> : <View style={[box, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />;
     }
     case 'ring': {
       const color = node.color ?? theme.accent;
@@ -102,7 +112,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     }
     case 'track': {
       const color = node.color ?? theme.accent;
-      return <Track value={num(node.value, state)} marker={fill(node.marker, state)} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} grow={inRow} />;
+      return <Track value={num(node.value, state)} marker={node.marker ? fill(node.marker, state) : ''} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} grow={inRow} />;
     }
     case 'lottie': {
       const size = node.size ?? 28;
@@ -121,7 +131,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
           style={({ pressed }) => [styles.button, { backgroundColor: node.color ?? theme.accent, paddingHorizontal: label ? 16 : 10, opacity: pressed ? 0.75 : 1 }]}
         >
           {node.icon && NativeIcon ? <NativeIcon name={fill(node.icon, state)} color={hex(ink)} style={{ width: 16, height: 16 }} /> : null}
-          {label ? <Text style={{ color: ink, fontWeight: '700', fontSize: 14 }}>{label}</Text> : null}
+          {label ? <Text style={textStyle({ weight: 'bold', color: ink }, theme)}>{label}</Text> : null}
         </Pressable>
       );
     }
@@ -135,12 +145,15 @@ const gradient = (colors?: string[]) => (colors && colors.length > 1 ? `linear-g
 const flex = (v: string) => (v === 'start' ? 'flex-start' : v === 'end' ? 'flex-end' : v) as 'flex-start';
 
 function textStyle(s: TextStyle | undefined, theme: Required<IslandTheme>): RNTextStyle {
+  const family = s?.font ?? fontFor(theme.fonts, s?.weight ?? 'medium');
   return {
     color: s?.color ?? theme.foreground,
     fontSize: s?.size ?? 14,
-    fontWeight: WEIGHT[s?.weight ?? 'regular'],
+    letterSpacing: tracking(s?.size ?? 14),
+    // A font file already carries its weight; asking for another would fake-bold it.
+    fontWeight: family ? undefined : WEIGHT[s?.weight ?? 'medium'],
     fontVariant: s?.mono ? ['tabular-nums'] : undefined,
-    fontFamily: s?.font,
+    fontFamily: family,
     textAlign: s?.align === 'end' ? 'right' : s?.align === 'center' ? 'center' : undefined,
     includeFontPadding: false,
   };
@@ -216,7 +229,11 @@ function Track({ value, marker, height, color, track, grow }: { value: number; m
       <View style={{ height, borderRadius: height / 2, backgroundColor: track, overflow: 'hidden' }}>
         <Animated.View style={[{ height, backgroundColor: color, borderRadius: height / 2 }, fillStyle]} />
       </View>
-      <Animated.Text style={[{ position: 'absolute', left: 0, width: 22, textAlign: 'center', fontSize: 16 }, markerStyle]}>{marker}</Animated.Text>
+      {marker ? (
+        <Animated.Text style={[{ position: 'absolute', left: 0, width: 22, textAlign: 'center', fontSize: 16 }, markerStyle]}>{marker}</Animated.Text>
+      ) : (
+        <Animated.View style={[{ position: 'absolute', left: 4, width: 14, height: 14, borderRadius: 7, backgroundColor: color, borderWidth: 3, borderColor: '#000' }, markerStyle]} />
+      )}
     </View>
   );
 }
@@ -239,7 +256,8 @@ export function clock(ms: number) {
 }
 
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
-const alpha = (color: string) => (/^#[0-9a-f]{6}$/i.test(color) ? `${color}38` : 'rgba(255,255,255,0.18)');
+const alpha = (color: string, a = 0.22) =>
+  /^#[0-9a-f]{6}$/i.test(color) ? color + Math.round(a * 255).toString(16).padStart(2, '0') : `rgba(255,255,255,${a})`;
 
 // endregion
 
@@ -289,7 +307,8 @@ export function HaloIslandHost({ placement = 'auto' }: { placement?: Placement }
 function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean; placement: Placement }) {
   const geo = useGeometry(placement);
   const reduced = useReducedMotion();
-  const theme = { ...DEFAULT_THEME, ...entry.template.theme };
+  const merged = { ...DEFAULT_THEME, ...entry.template.theme };
+  const theme = { ...merged, border: merged.border || alpha(merged.accent, 0.3) };
   const spring = reduced ? null : springOf(entry.template.motion);
   const [expanded, setExpanded] = useState(!!entry.options.expanded);
   const [compact, setCompact] = useState({ width: 0, height: 0 });

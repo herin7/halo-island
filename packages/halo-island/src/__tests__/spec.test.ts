@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { column, fill, num, row, text } from '../spec';
+import { column, fill, fontFor, num, row, text } from '../spec';
 
 test('fill replaces placeholders and blanks missing keys', () => {
   expect(fill('{eta} min · {driver}', { eta: 4, driver: 'Asha' })).toBe('4 min · Asha');
@@ -18,4 +18,13 @@ test('num resolves numbers, placeholders and junk', () => {
 test('builders accept an optional style and drop falsy children', () => {
   expect(row(text('a'), false, text('b'))).toEqual({ type: 'row', children: [text('a'), text('b')] });
   expect(column({ gap: 4 }, text('a'))).toEqual({ type: 'column', style: { gap: 4 }, children: [text('a')] });
+});
+
+test('fontFor picks the nearest weight, heavier on ties', () => {
+  const fonts = { regular: 'R', bold: 'B' };
+  expect(fontFor(fonts, 'regular')).toBe('R');
+  expect(fontFor(fonts, 'medium')).toBe('R');
+  expect(fontFor(fonts, 'semibold')).toBe('B');
+  expect(fontFor(fonts, 'heavy')).toBe('B');
+  expect(fontFor(undefined, 'bold')).toBeUndefined();
 });

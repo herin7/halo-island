@@ -14,7 +14,7 @@ export interface TextStyle {
   size?: number;
   weight?: 'regular' | 'medium' | 'semibold' | 'bold' | 'heavy';
   color?: Color;
-  /** Tabular digits, so counting numbers don't jitter. */
+  /** Tabular digits; changes roll in like a counter. */
   mono?: boolean;
   /** A font the app already ships (Expo font name / Android res/font or assets/fonts file name). */
   font?: string;
@@ -44,7 +44,11 @@ export interface BoxStyle {
 /** Looping motion for any node. Respects reduced motion. */
 export type Effect = 'pulse' | 'bounce' | 'spin' | 'wiggle' | 'shimmer';
 
-export type IslandNode = NodeBody & { effect?: Effect };
+export type IslandNode = NodeBody & {
+  effect?: Effect;
+  /** Render only while this state key is set — the island grows as details arrive. */
+  show?: string;
+};
 
 type NodeBody =
   | { type: 'row' | 'column'; children: IslandNode[]; style?: BoxStyle }
@@ -54,11 +58,12 @@ type NodeBody =
    * `path`: SVG path data — any icon from Figma ("Copy as SVG" after Flatten), Lucide, Material.
    */
   | { type: 'icon'; name?: string; path?: string; viewBox?: number; stroke?: number; size?: number; color?: Color }
-  | { type: 'image'; uri: string; size?: number; radius?: number }
+  /** `uri`: http(s), file, or `asset(require('./logo.png'))`. `width` for wordmarks; `fit: 'contain'` keeps them whole. */
+  | { type: 'image'; uri: string; size?: number; width?: number; radius?: number; fit?: 'cover' | 'contain' }
   | { type: 'ring'; value: Num; size?: number; thickness?: number; color?: Color; track?: Color }
   | { type: 'bar'; value: Num; height?: number; color?: Color; track?: Color }
-  /** A bar with `marker` (emoji or text) riding along it at `value` — a rider heading to your door. */
-  | { type: 'track'; value: Num; marker: string; height?: number; color?: Color; track?: Color }
+  /** A bar with a marker riding along it at `value` — a rider heading to your door. No marker draws a dot. */
+  | { type: 'track'; value: Num; marker?: string; height?: number; color?: Color; track?: Color }
   /** Lottie from a URL. Needs `lottie-react-native` in the app; renders nothing without it. */
   | { type: 'lottie'; uri: string; size?: number; loop?: boolean }
   /** `count` segments; `value` is how many are done (fractions fill part of one). Order stages, journeys, onboarding. */
@@ -80,6 +85,22 @@ export interface IslandTheme {
   glow?: Color;
   /** Island fill as a gradient (overrides background). */
   gradient?: Color[];
+  /**
+   * The island's typeface, per weight: `{ regular: 'Figtree_500Medium', bold: 'Figtree_700Bold' }`.
+   * Fonts the app ships (expo-font plugin or res/font). Missing weights fall back to the nearest one.
+   */
+  fonts?: Partial<Record<Weight, string>>;
+}
+
+export type Weight = NonNullable<TextStyle['weight']>;
+
+/** Font for a weight from theme.fonts, falling back to the closest weight that is set. */
+export function fontFor(fonts: IslandTheme['fonts'], weight: Weight = 'regular'): string | undefined {
+  if (!fonts) return undefined;
+  const order: Weight[] = ['regular', 'medium', 'semibold', 'bold', 'heavy'];
+  const i = order.indexOf(weight);
+  const nearest = [...order].sort((a, b) => Math.abs(order.indexOf(a) - i) - Math.abs(order.indexOf(b) - i) || order.indexOf(b) - order.indexOf(a));
+  return nearest.map((w) => fonts[w]).find(Boolean);
 }
 
 export type MotionPreset = 'bouncy' | 'snappy' | 'smooth' | 'none';
@@ -105,10 +126,12 @@ export const DEFAULT_THEME: Required<IslandTheme> = {
   foreground: '#F7F7F2',
   secondary: '#9AA09A',
   accent: '#5FCB9C',
-  border: 'rgba(255,255,255,0.10)',
+  /** Empty = the key line takes the accent color, as Apple recommends. */
+  border: '',
   radius: 32,
   glow: '',
   gradient: [],
+  fonts: {},
 };
 
 // region Builders — sugar for the JSON above, so apps and agents write less.
@@ -127,17 +150,25 @@ export const text = (value: string, style?: TextStyle): IslandNode => ({ type: '
 export const icon = (name: string, opts?: { size?: number; color?: Color }): IslandNode => ({ type: 'icon', name, ...opts });
 /** An icon from raw SVG path data. `stroke` draws outlines (Lucide-style) instead of fills. */
 export const svg = (path: string, opts?: { size?: number; color?: Color; viewBox?: number; stroke?: number }): IslandNode => ({ type: 'icon', path, ...opts });
-export const image = (uri: string, opts?: { size?: number; radius?: number }): IslandNode => ({ type: 'image', uri, ...opts });
+export const image = (uri: string, opts?: { size?: number; width?: number; radius?: number; fit?: 'cover' | 'contain' }): IslandNode => ({ type: 'image', uri, ...opts });
 export const ring = (value: Num, opts?: { size?: number; thickness?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'ring', value, ...opts });
 export const bar = (value: Num, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'bar', value, ...opts });
 export const steps = (value: Num, count: number, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'steps', value, count, ...opts });
 export const timer = (to: Num, opts?: { countUp?: boolean; style?: TextStyle }): IslandNode => ({ type: 'timer', to, ...opts });
 export const button = (action: string, label?: string, opts?: { icon?: string; color?: Color; textColor?: Color }): IslandNode => ({ type: 'button', action, label, ...opts });
 export const spacer = (size?: number): IslandNode => ({ type: 'spacer', size });
-export const track = (value: Num, marker: string, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'track', value, marker, ...opts });
+export const track = (value: Num, marker?: string, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'track', value, marker, ...opts });
 export const lottie = (uri: string, opts?: { size?: number; loop?: boolean }): IslandNode => ({ type: 'lottie', uri, ...opts });
-/** Adds looping motion: `fx(text('🛵'), 'bounce')`. */
+/** Adds looping motion: `fx(text('LIVE'), 'pulse')`. */
 export const fx = (node: IslandNode, effect: Effect): IslandNode => ({ ...node, effect });
+/** Shows `node` only while `state[key]` is set: `when('driver', text('{driver}'))`. */
+export const when = (key: string, node: IslandNode): IslandNode => ({ ...node, show: key });
+
+/** True when a `show` key is satisfied. */
+export const visible = (node: IslandNode, state: IslandState) => !node.show || !!state[node.show];
+
+/** Large text reads better slightly tightened (-2%), the way display type is set. */
+export const tracking = (size: number) => (size >= 20 ? -0.02 * size : 0);
 
 // endregion
 

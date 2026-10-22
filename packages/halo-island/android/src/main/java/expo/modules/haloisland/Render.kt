@@ -42,8 +42,19 @@ internal class Theme(json: JSONObject?) {
   val foreground = json.color("foreground", Color.rgb(247, 247, 242))
   val secondary = json.color("secondary", Color.rgb(154, 160, 154))
   val accent = json.color("accent", Color.rgb(95, 203, 156))
-  val border = json.color("border", Color.argb(26, 255, 255, 255))
+  /** Unset key line takes the accent, as Apple recommends. */
+  val border = json.color("border", withAlpha(accent, 0.3f))
   val radius = json?.optDouble("radius", 32.0)?.toFloat() ?: 32f
+  private val fonts = json?.optJSONObject("fonts")
+
+  /** Same nearest-weight fallback as fontFor() in spec.ts. */
+  fun fontFor(weight: String?): String? {
+    val f = fonts ?: return null
+    val order = listOf("regular", "medium", "semibold", "bold", "heavy")
+    val i = order.indexOf(weight ?: "regular").coerceAtLeast(0)
+    return order.sortedWith(compareBy<String> { kotlin.math.abs(order.indexOf(it) - i) }.thenByDescending { order.indexOf(it) })
+      .firstNotNullOfOrNull { f.optString(it).takeIf { s -> s.isNotEmpty() } }
+  }
 }
 
 internal fun JSONObject?.color(key: String, fallback: Int): Int =
@@ -87,6 +98,10 @@ internal class Renderer(
 
   fun build(node: JSONObject?, path: String = "0"): View? {
     node ?: return null
+    node.optString("show").takeIf { it.isNotEmpty() }?.let { key ->
+      val v = state.opt(key)
+      if (v == null || v == JSONObject.NULL || v == false || v == "" || v == 0) return null
+    }
     val view = body(node, path) ?: return null
     node.optString("effect").takeIf { it.isNotEmpty() }?.let { loop(view, it) }
     return view
@@ -96,7 +111,7 @@ internal class Renderer(
     return when (node.optString("type")) {
       "row" -> box(node, LinearLayout.HORIZONTAL, path)
       "column" -> box(node, LinearLayout.VERTICAL, path)
-      "text" -> label(fill(node.optString("text"), state), node.optJSONObject("style"))
+      "text" -> label(fill(node.optString("text"), state), node.optJSONObject("style")).also { roll(it, path) }
       "icon" -> if (node.has("path")) PathIconView(context).apply {
           set(node.optString("path"), node.optDouble("viewBox", 24.0).toFloat(), node.optDouble("stroke", 0.0).toFloat(), node.color("color", theme.foreground))
         }.sized(node.optInt("size", 18))
@@ -188,9 +203,13 @@ internal class Renderer(
 
   fun label(value: String, style: JSONObject?) = TextView(context).apply {
     text = value
-    setTextSize(TypedValue.COMPLEX_UNIT_SP, style?.optDouble("size", 14.0)?.toFloat() ?: 14f)
+    val size = style?.optDouble("size", 14.0)?.toFloat() ?: 14f
+    setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+    // Large text reads better slightly tightened, the way display type is set.
+    if (size >= 20f) letterSpacing = -0.02f
     setTextColor(style.color("color", theme.foreground))
-    typeface = font(style?.optString("font")) ?: typeface(style?.optString("weight"))
+    val weight = style?.optString("weight")?.takeIf { it.isNotEmpty() } ?: "medium"
+    typeface = font(style?.optString("font")?.takeIf { it.isNotEmpty() } ?: theme.fontFor(weight)) ?: typeface(weight)
     includeFontPadding = false
     maxLines = style?.optInt("lines", 1) ?: 1
     ellipsize = TextUtils.TruncateAt.END
@@ -211,7 +230,7 @@ internal class Renderer(
 
   private fun image(node: JSONObject): View {
     val view = ImageView(context).apply {
-      scaleType = ImageView.ScaleType.CENTER_CROP
+      scaleType = if (node.optString("fit") == "contain") ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
       // An empty uri is a placeholder slot (e.g. a result that hasn't arrived yet).
       background = rounded(Color.argb(20, 255, 255, 255), dp(node.optDouble("radius", 8.0).toFloat()))
       clipToOutline = true
@@ -223,10 +242,14 @@ internal class Renderer(
         IMAGES[uri] = bitmap
         MAIN.post { view.setImageBitmap(bitmap) }
       }
-    } else if (uri.isNotEmpty()) {
+    } else if (uri.contains(':')) {
       runCatching { view.setImageURI(Uri.parse(uri)) }
+    } else if (uri.isNotEmpty()) {
+      // Release builds: a bundled asset resolves to a drawable resource name.
+      drawableId(context, uri).takeIf { it != 0 }?.let(view::setImageResource)
     }
-    return view.sized(node.optInt("size", 32))
+    val size = node.optInt("size", 32)
+    return view.apply { layoutParams = LinearLayout.LayoutParams(px(node.optInt("width", size)), px(size)) }
   }
 
   /** Looping motion; stops itself when the view leaves the window so rebuilt trees don't leak animators. */
@@ -258,6 +281,17 @@ internal class Renderer(
     }.sized(node.optInt("size", 28))
   }
 
+  /** Numbers roll: when a mono text changes between renders, the new value slides up into place. */
+  private fun roll(view: TextView, path: String) {
+    if (view.fontFeatureSettings != "tnum") return
+    val value = view.text.toString()
+    val before = TEXTS.put("${System.identityHashCode(previous)}:$path", value)
+    if (before == null || before == value || !ValueAnimator.areAnimatorsEnabled()) return
+    view.alpha = 0f
+    view.translationY = dp(8f)
+    view.animate().alpha(1f).translationY(0f).setDuration(260).setInterpolator(DecelerateInterpolator(1.8f)).start()
+  }
+
   private fun steps(node: JSONObject, path: String): View {
     val color = node.color("color", theme.accent)
     val track = node.color("track", withAlpha(color, 0.22f))
@@ -279,7 +313,8 @@ internal class Renderer(
     return Chronometer(context).apply {
       setTextSize(TypedValue.COMPLEX_UNIT_SP, style?.optDouble("size", 14.0)?.toFloat() ?: 14f)
       setTextColor(style.color("color", theme.foreground))
-      typeface = typeface(style?.optString("weight"))
+      typeface = font(style?.optString("font")?.takeIf { it.isNotEmpty() } ?: theme.fontFor(style?.optString("weight")))
+        ?: typeface(style?.optString("weight"))
       fontFeatureSettings = "tnum"
       includeFontPadding = false
       base = SystemClock.elapsedRealtime() + (target - System.currentTimeMillis())
@@ -372,6 +407,8 @@ internal class Renderer(
     private val FIXED_SIZE = setOf("icon", "image", "ring", "spacer")
     private val BARS = setOf("bar", "steps", "track")
     private val FONTS = mutableMapOf<String, Typeface>()
+    // ponytail: grows with distinct mono-text paths per island; tiny in practice, clear per island if it ever matters.
+    private val TEXTS = mutableMapOf<String, String>()
     private val HAS_LOTTIE = runCatching { Class.forName("com.airbnb.lottie.LottieAnimationView") }.isSuccess
     private val MAIN = Handler(Looper.getMainLooper())
     // ponytail: unbounded, fine for a handful of avatars/artwork; LruCache if apps rotate many images.
@@ -425,16 +462,24 @@ internal class BarView(context: Context, color: Int, track: Int) : View(context)
 /** A bar with a text marker riding along it. */
 internal class TrackView(context: Context, color: Int, track: Int, marker: String, barHeight: Int) : FrameLayout(context) {
   private val bar = BarView(context, color, track)
-  private val label = TextView(context).apply {
+  private val density = context.resources.displayMetrics.density
+  private val label: View = if (marker.isNotEmpty()) TextView(context).apply {
     text = marker
     setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
     includeFontPadding = false
+  } else View(context).apply {
+    background = GradientDrawable().apply {
+      shape = GradientDrawable.OVAL
+      setColor(color)
+      setStroke((3 * density).toInt(), Color.BLACK)
+    }
+    layoutParams = LayoutParams((14 * density).toInt(), (14 * density).toInt(), Gravity.CENTER_VERTICAL)
   }
   private var value = 0f
 
   init {
     addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, barHeight, Gravity.CENTER_VERTICAL))
-    addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+    addView(label, label.layoutParams as? LayoutParams ?: LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
   }
 
   fun set(v: Float) {
