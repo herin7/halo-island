@@ -16,6 +16,8 @@ export interface TextStyle {
   color?: Color;
   /** Tabular digits, so counting numbers don't jitter. */
   mono?: boolean;
+  /** A font the app already ships (Expo font name / Android res/font or assets/fonts file name). */
+  font?: string;
   lines?: number;
   align?: 'start' | 'center' | 'end';
 }
@@ -27,7 +29,14 @@ export interface BoxStyle {
   align?: 'start' | 'center' | 'end' | 'stretch';
   justify?: 'start' | 'center' | 'end' | 'between';
   background?: Color;
+  /** Linear gradient, top-left to bottom-right. Overrides background. */
+  gradient?: Color[];
   radius?: number;
+  border?: { width: number; color: Color };
+  /** Fixed size, like a Figma frame set to Fixed. */
+  width?: number;
+  height?: number;
+  opacity?: number;
   /** Take the remaining space in the parent row/column. */
   grow?: boolean;
 }
@@ -40,8 +49,11 @@ export type IslandNode = NodeBody & { effect?: Effect };
 type NodeBody =
   | { type: 'row' | 'column'; children: IslandNode[]; style?: BoxStyle }
   | { type: 'text'; text: string; style?: TextStyle }
-  /** Built-in name (see ICONS), an SF Symbol on iOS, or an Android drawable name. */
-  | { type: 'icon'; name: string; size?: number; color?: Color }
+  /**
+   * `name`: built-in (see README), an SF Symbol on iOS, or an Android drawable name.
+   * `path`: SVG path data — any icon from Figma ("Copy as SVG" after Flatten), Lucide, Material.
+   */
+  | { type: 'icon'; name?: string; path?: string; viewBox?: number; stroke?: number; size?: number; color?: Color }
   | { type: 'image'; uri: string; size?: number; radius?: number }
   | { type: 'ring'; value: Num; size?: number; thickness?: number; color?: Color; track?: Color }
   | { type: 'bar'; value: Num; height?: number; color?: Color; track?: Color }
@@ -66,6 +78,8 @@ export interface IslandTheme {
   radius?: number;
   /** Border breathes in this color. */
   glow?: Color;
+  /** Island fill as a gradient (overrides background). */
+  gradient?: Color[];
 }
 
 export type MotionPreset = 'bouncy' | 'snappy' | 'smooth' | 'none';
@@ -94,6 +108,7 @@ export const DEFAULT_THEME: Required<IslandTheme> = {
   border: 'rgba(255,255,255,0.10)',
   radius: 32,
   glow: '',
+  gradient: [],
 };
 
 // region Builders — sugar for the JSON above, so apps and agents write less.
@@ -110,6 +125,8 @@ export function column(style: BoxStyle | IslandNode, ...children: Kids): IslandN
 }
 export const text = (value: string, style?: TextStyle): IslandNode => ({ type: 'text', text: value, style });
 export const icon = (name: string, opts?: { size?: number; color?: Color }): IslandNode => ({ type: 'icon', name, ...opts });
+/** An icon from raw SVG path data. `stroke` draws outlines (Lucide-style) instead of fills. */
+export const svg = (path: string, opts?: { size?: number; color?: Color; viewBox?: number; stroke?: number }): IslandNode => ({ type: 'icon', path, ...opts });
 export const image = (uri: string, opts?: { size?: number; radius?: number }): IslandNode => ({ type: 'image', uri, ...opts });
 export const ring = (value: Num, opts?: { size?: number; thickness?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'ring', value, ...opts });
 export const bar = (value: Num, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'bar', value, ...opts });

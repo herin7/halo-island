@@ -97,7 +97,10 @@ internal class Renderer(
       "row" -> box(node, LinearLayout.HORIZONTAL, path)
       "column" -> box(node, LinearLayout.VERTICAL, path)
       "text" -> label(fill(node.optString("text"), state), node.optJSONObject("style"))
-      "icon" -> icon(fill(node.optString("name"), state), node.optInt("size", 18), node.color("color", theme.foreground))
+      "icon" -> if (node.has("path")) PathIconView(context).apply {
+          set(node.optString("path"), node.optDouble("viewBox", 24.0).toFloat(), node.optDouble("stroke", 0.0).toFloat(), node.color("color", theme.foreground))
+        }.sized(node.optInt("size", 18))
+        else icon(fill(node.optString("name"), state), node.optInt("size", 18), node.color("color", theme.foreground))
       "image" -> image(node)
       "ring" -> RingView(context, dp(node.optDouble("thickness", 3.0).toFloat()), node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.22f)))
         .also { animate(it::set, path, num(node.opt("value"), state)) }
@@ -140,8 +143,12 @@ internal class Renderer(
       }
       gravity = cross or main
       style?.let { s ->
-        if (s.has("background") || s.has("radius")) {
-          background = rounded(s.color("background", Color.TRANSPARENT), dp(s.optDouble("radius", 0.0).toFloat()))
+        if (s.has("background") || s.has("radius") || s.has("gradient") || s.has("border")) {
+          background = surface(s, Color.TRANSPARENT, dp(s.optDouble("radius", 0.0).toFloat()))
+        }
+        if (s.has("opacity")) alpha = s.optDouble("opacity", 1.0).toFloat()
+        if (s.has("width") || s.has("height")) {
+          layoutParams = LinearLayout.LayoutParams(if (s.has("width")) px(s.optInt("width")) else wrap, if (s.has("height")) px(s.optInt("height")) else wrap)
         }
       }
     }
@@ -183,7 +190,7 @@ internal class Renderer(
     text = value
     setTextSize(TypedValue.COMPLEX_UNIT_SP, style?.optDouble("size", 14.0)?.toFloat() ?: 14f)
     setTextColor(style.color("color", theme.foreground))
-    typeface = typeface(style?.optString("weight"))
+    typeface = font(style?.optString("font")) ?: typeface(style?.optString("weight"))
     includeFontPadding = false
     maxLines = style?.optInt("lines", 1) ?: 1
     ellipsize = TextUtils.TruncateAt.END
@@ -325,6 +332,27 @@ internal class Renderer(
     }
   }
 
+  /** Box fill: gradient (135 degrees) or solid, with optional border — Figma frame parity. */
+  private fun surface(s: JSONObject, fallback: Int, radius: Float): GradientDrawable {
+    val colors = s.optJSONArray("gradient")?.let { a -> (0 until a.length()).mapNotNull { runCatching { Color.parseColor(a.getString(it)) }.getOrNull() } }
+    val drawable = if (colors != null && colors.size > 1) GradientDrawable(GradientDrawable.Orientation.TL_BR, colors.toIntArray())
+    else GradientDrawable().apply { setColor(s.color("background", fallback)) }
+    drawable.cornerRadius = radius
+    s.optJSONObject("border")?.let { b -> drawable.setStroke(px(b.optInt("width", 1)), b.color("color", theme.border)) }
+    return drawable
+  }
+
+  /** App fonts: Android res/font/<name>, or assets/fonts/<name>.ttf|otf (where Expo puts them). */
+  private fun font(name: String?): Typeface? {
+    if (name.isNullOrEmpty()) return null
+    FONTS[name]?.let { return it }
+    val res = context.resources.getIdentifier(name.lowercase().replace('-', '_'), "font", context.packageName)
+    val face = (if (res != 0) runCatching { androidx.core.content.res.ResourcesCompat.getFont(context, res) }.getOrNull() else null)
+      ?: listOf("ttf", "otf").firstNotNullOfOrNull { ext -> runCatching { Typeface.createFromAsset(context.assets, "fonts/$name.$ext") }.getOrNull() }
+    face?.let { FONTS[name] = it }
+    return face
+  }
+
   private fun typeface(weight: String?): Typeface {
     val w = when (weight) { "medium" -> 500; "semibold" -> 600; "bold" -> 700; "heavy" -> 800; else -> 400 }
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) Typeface.create(Typeface.DEFAULT, w, false)
@@ -343,6 +371,7 @@ internal class Renderer(
     private const val match = LinearLayout.LayoutParams.MATCH_PARENT
     private val FIXED_SIZE = setOf("icon", "image", "ring", "spacer")
     private val BARS = setOf("bar", "steps", "track")
+    private val FONTS = mutableMapOf<String, Typeface>()
     private val HAS_LOTTIE = runCatching { Class.forName("com.airbnb.lottie.LottieAnimationView") }.isSuccess
     private val MAIN = Handler(Looper.getMainLooper())
     // ponytail: unbounded, fine for a handful of avatars/artwork; LruCache if apps rotate many images.
@@ -417,5 +446,38 @@ internal class TrackView(context: Context, color: Int, track: Int, marker: Strin
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
     label.translationX = value * max(0, width - label.width)
+  }
+}
+
+/** Draws SVG path data scaled from a square viewBox. Fill by default, outline when stroke > 0. */
+internal class PathIconView(context: Context) : View(context) {
+  private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+  private var path: android.graphics.Path? = null
+  private var viewBox = 24f
+  private var stroke = 0f
+  private val scale = android.graphics.Matrix()
+  private val scaled = android.graphics.Path()
+
+  fun set(data: String, viewBox: Float, stroke: Float, color: Int) {
+    path = runCatching { androidx.core.graphics.PathParser.createPathFromPathData(data) }.getOrNull()
+    this.viewBox = viewBox
+    this.stroke = stroke
+    paint.color = color
+    invalidate()
+  }
+
+  fun setTint(color: Int) {
+    paint.color = color
+    invalidate()
+  }
+
+  override fun onDraw(canvas: Canvas) {
+    val p = path ?: return
+    val factor = minOf(width, height) / viewBox
+    scale.setScale(factor, factor)
+    p.transform(scale, scaled)
+    paint.style = if (stroke > 0f) Paint.Style.STROKE else Paint.Style.FILL
+    paint.strokeWidth = stroke * factor
+    canvas.drawPath(scaled, paint)
   }
 }

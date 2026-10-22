@@ -135,7 +135,7 @@ internal class OverlayIsland(private val context: Context) {
       HaloIslandModule.dispatch(context, current.id, action)
       scheduleAutoCollapse()
     }
-    container.background = rounded(theme.background, if (isExpanded) dp(theme.radius.toInt()).toFloat() else compactHeight / 2f, theme.border, dp(1))
+    container.background = islandBackground(current, if (isExpanded) dp(theme.radius.toInt()).toFloat() else compactHeight / 2f)
 
     val compactRow = compactRow(renderer, current, "c")
     compactHost.removeAllViews()
@@ -161,6 +161,17 @@ internal class OverlayIsland(private val context: Context) {
     container.contentDescription = describe(current)
     syncGlow(current)
     resize()
+  }
+
+  private fun islandBackground(current: Islands.Entry, radius: Float): android.graphics.drawable.GradientDrawable {
+    val json = current.template.optJSONObject("theme")
+    val theme = Theme(json)
+    val colors = json?.optJSONArray("gradient")?.let { a -> (0 until a.length()).mapNotNull { runCatching { android.graphics.Color.parseColor(a.getString(it)) }.getOrNull() } }
+    val drawable = if (colors != null && colors.size > 1) android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR, colors.toIntArray())
+    else android.graphics.drawable.GradientDrawable().apply { setColor(theme.background) }
+    drawable.cornerRadius = radius
+    drawable.setStroke(dp(1), theme.border)
+    return drawable
   }
 
   /** Breathes the border between the theme border and the glow color. */
@@ -289,7 +300,7 @@ internal class OverlayIsland(private val context: Context) {
     val theme = Theme(entry?.template?.optJSONObject("theme"))
     val height = measuredExpandedHeight()
     resize()
-    container.background = rounded(theme.background, dp(theme.radius.toInt()).toFloat(), theme.border, dp(1))
+    container.background = islandBackground(entry ?: return, dp(theme.radius.toInt()).toFloat())
     compactHost.visibility = View.GONE
     expandedHost.visibility = View.VISIBLE
     container.pivotX = expandedWidth / 2f

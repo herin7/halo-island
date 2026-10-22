@@ -6,7 +6,7 @@ import Animated, { Easing, interpolateColor, useAnimatedStyle, useReducedMotion,
 import { Active, Cutout, emitAction, hex, native, springOf, store } from './island';
 import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTheme, TextStyle, fill, num } from './spec';
 
-let NativeIcon: ComponentType<{ name: string; color?: string; style?: ViewStyle }> | null = null;
+let NativeIcon: ComponentType<{ name?: string; path?: string; viewBox?: number; stroke?: number; color?: string; style?: ViewStyle }> | null = null;
 try {
   if (native) NativeIcon = requireNativeView('HaloIsland');
 } catch {}
@@ -44,7 +44,13 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
             alignItems: flex(s.align ?? (row ? 'center' : 'stretch')),
             justifyContent: s.justify === 'between' ? 'space-between' : flex(s.justify ?? 'start'),
             backgroundColor: s.background,
+            experimental_backgroundImage: gradient(s.gradient),
             borderRadius: s.radius,
+            borderWidth: s.border?.width,
+            borderColor: s.border?.color,
+            width: s.width,
+            height: s.height,
+            opacity: s.opacity,
             flexGrow: s.grow ? 1 : undefined,
             flexShrink: s.grow ? 1 : undefined,
           }}
@@ -57,7 +63,16 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
       return <Text style={textStyle(node.style, theme)} numberOfLines={node.style?.lines ?? 1}>{fill(node.text, state)}</Text>;
     case 'icon': {
       const size = node.size ?? 18;
-      return NativeIcon ? <NativeIcon name={fill(node.name, state)} color={hex(node.color ?? theme.foreground)} style={{ width: size, height: size }} /> : null;
+      return NativeIcon ? (
+        <NativeIcon
+          name={node.name ? fill(node.name, state) : undefined}
+          path={node.path}
+          viewBox={node.viewBox}
+          stroke={node.stroke}
+          color={hex(node.color ?? theme.foreground)}
+          style={{ width: size, height: size }}
+        />
+      ) : null;
     }
     case 'image': {
       const size = node.size ?? 32;
@@ -115,6 +130,8 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
   }
 }
 
+const gradient = (colors?: string[]) => (colors && colors.length > 1 ? `linear-gradient(135deg, ${colors.join(', ')})` : undefined);
+
 const flex = (v: string) => (v === 'start' ? 'flex-start' : v === 'end' ? 'flex-end' : v) as 'flex-start';
 
 function textStyle(s: TextStyle | undefined, theme: Required<IslandTheme>): RNTextStyle {
@@ -123,6 +140,7 @@ function textStyle(s: TextStyle | undefined, theme: Required<IslandTheme>): RNTe
     fontSize: s?.size ?? 14,
     fontWeight: WEIGHT[s?.weight ?? 'regular'],
     fontVariant: s?.mono ? ['tabular-nums'] : undefined,
+    fontFamily: s?.font,
     textAlign: s?.align === 'end' ? 'right' : s?.align === 'center' ? 'center' : undefined,
     includeFontPadding: false,
   };
@@ -387,7 +405,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
 
       <Animated.View
         {...pan.panHandlers}
-        style={[styles.island, { top: geo.top, backgroundColor: theme.background }, islandStyle]}
+        style={[styles.island, { top: geo.top, backgroundColor: theme.background, experimental_backgroundImage: gradient(theme.gradient) }, islandStyle]}
       >
         <Pressable
           onPress={onPress}

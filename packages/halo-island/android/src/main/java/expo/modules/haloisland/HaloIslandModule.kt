@@ -132,7 +132,10 @@ class HaloIslandModule : Module() {
     }
 
     View(HaloIconView::class) {
-      Prop("name") { view: HaloIconView, name: String -> view.setName(name) }
+      Prop("name") { view: HaloIconView, name: String? -> view.setName(name) }
+      Prop("path") { view: HaloIconView, path: String? -> view.setPath(path) }
+      Prop("viewBox") { view: HaloIconView, viewBox: Double? -> view.viewBox = viewBox?.toFloat() ?: 24f; view.refresh() }
+      Prop("stroke") { view: HaloIconView, stroke: Double? -> view.stroke = stroke?.toFloat() ?: 0f; view.refresh() }
       Prop("color") { view: HaloIconView, color: String? ->
         view.setTint(color?.let { runCatching { Color.parseColor(it) }.getOrNull() } ?: Color.WHITE)
       }
@@ -187,13 +190,30 @@ class HaloIslandModule : Module() {
 /** Native icon for the in-app renderer, so in-app and system islands share one icon set. */
 class HaloIconView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   private val image = ImageView(context).also { addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)) }
+  private val vector = PathIconView(context).also { addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)) }
+  private var path: String? = null
+  private var tint = Color.WHITE
+  var viewBox = 24f
+  var stroke = 0f
 
-  fun setName(name: String) {
-    val id = drawableId(context, name)
+  fun setName(name: String?) {
+    val id = name?.let { drawableId(context, it) } ?: 0
     if (id != 0) image.setImageResource(id) else image.setImageDrawable(null)
   }
 
+  fun setPath(value: String?) {
+    path = value
+    refresh()
+  }
+
+  fun refresh() {
+    vector.visibility = if (path == null) GONE else VISIBLE
+    path?.let { vector.set(it, viewBox, stroke, tint) }
+  }
+
   fun setTint(color: Int) {
+    tint = color
     image.imageTintList = ColorStateList.valueOf(color)
+    vector.setTint(color)
   }
 }

@@ -130,7 +130,7 @@ if (Platform.OS === 'android') {
 
 // region Normalization — native receives one color format and one motion format.
 
-const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secondary', 'accent', 'border', 'textColor']);
+const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secondary', 'accent', 'border', 'textColor', 'glow']);
 
 export const MOTION = {
   bouncy: { stiffness: 380, damping: 24 },
@@ -152,7 +152,7 @@ export function hex(color: string): string {
 
 function normalize(value: unknown, key?: string): unknown {
   if (typeof value === 'string' && key && COLOR_KEYS.has(key)) return hex(value);
-  if (Array.isArray(value)) return value.map((v) => normalize(v));
+  if (Array.isArray(value)) return value.map((v) => normalize(v, key === 'gradient' ? 'color' : undefined));
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, normalize(v, k)]));
   }
