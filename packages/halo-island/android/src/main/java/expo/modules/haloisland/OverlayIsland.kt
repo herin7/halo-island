@@ -3,7 +3,6 @@ package expo.modules.haloisland
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ArgbEvaluator
-import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.PixelFormat
@@ -71,9 +70,6 @@ internal class OverlayIsland(private val context: Context) {
     setExpanded(true)
     scheduleAutoCollapse()
     container.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-    if (animationsEnabled()) {
-      ObjectAnimator.ofFloat(container, View.ROTATION, 0f, 2.5f, -2.5f, 2.5f, 0f).setDuration(360).start()
-    }
   }
 
   fun remove() {
@@ -150,10 +146,10 @@ internal class OverlayIsland(private val context: Context) {
     renderer.build(current.template.optJSONObject("expanded"), "e")?.let { body ->
       val column = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(8), dp(6), dp(8), dp(18))
+        setPadding(dp(10), dp(10), dp(10), dp(24))
         addView(compactRow(renderer, current, "h"), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, compactHeight))
         addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-          setMargins(dp(20), dp(10), dp(20), 0)
+          setMargins(dp(14), dp(10), dp(14), 0)
         })
       }
       expandedHost.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
@@ -199,7 +195,7 @@ internal class OverlayIsland(private val context: Context) {
     return LinearLayout(context).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER_VERTICAL
-      setPadding(dp(12), 0, dp(12), 0)
+      setPadding(dp(14), 0, dp(14), 0)
       renderer.build(compact?.optJSONObject("leading"), "${path}0")?.let { addView(it) }
       addView(View(context), LinearLayout.LayoutParams(dp(16), 1, 1f))
       renderer.build(compact?.optJSONObject("trailing"), "${path}1")?.let { addView(it) }
@@ -362,8 +358,8 @@ internal class OverlayIsland(private val context: Context) {
   /** Same physics as the in-app renderer: JS sends {stiffness, damping} with mass 1. */
   private fun SpringForce.applyMotion() {
     val motion = entry?.template?.optJSONObject("motion")
-    val stiffness = motion?.optDouble("stiffness", 380.0) ?: 380.0
-    val damping = motion?.optDouble("damping", 24.2) ?: 24.2
+    val stiffness = motion?.optDouble("stiffness", 260.0) ?: 260.0
+    val damping = motion?.optDouble("damping", 32.0) ?: 32.0
     setStiffness(stiffness.toFloat())
     dampingRatio = (damping / (2 * sqrt(stiffness))).toFloat().coerceIn(0.05f, 1f)
   }

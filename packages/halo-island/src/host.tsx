@@ -26,6 +26,15 @@ try {
 
 const WEIGHT = { regular: '400', medium: '500', semibold: '600', bold: '700', heavy: '800' } as const;
 const COMPACT_HEIGHT = 37;
+/** Compact pill side padding. */
+const ROW_PAD = 14;
+/**
+ * Expanded margins, concentric with the island's large corner radius: content stays clear of the
+ * curve on every side instead of running into it.
+ */
+const OPEN_INSET = 24;
+const OPEN_TOP = 10;
+const OPEN_BOTTOM = 24;
 
 // region Nodes
 
@@ -362,7 +371,6 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
     if (!entry.alert || !hasBody) return;
     setExpanded(true);
     bump();
-    if (!reduced) shake.value = withSequence(withTiming(1, { duration: 60 }), withTiming(-1, { duration: 120 }), withTiming(1, { duration: 120 }), withTiming(0, { duration: 60 }));
   }, [entry.alert]);
 
   // Born from the camera cutout (or a dot), then springs to its real size.
@@ -373,7 +381,6 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
   const opacity = useSharedValue(0);
   const bodyOpacity = useSharedValue(0);
   const drag = useSharedValue(0);
-  const shake = useSharedValue(0);
   const glow = useSharedValue(0);
   useEffect(() => {
     if (theme.glow && !reduced) glow.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) }), -1, true);
@@ -392,7 +399,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
       return;
     }
     const targetW = isOpen ? geo.expandedWidth : Math.min(geo.expandedWidth, Math.max(compact.width, geo.gap + 2 * rowHeight));
-    const targetH = isOpen ? rowHeight + bodyHeight + 32 : rowHeight;
+    const targetH = isOpen ? rowHeight + OPEN_TOP + bodyHeight + OPEN_BOTTOM : rowHeight;
     w.value = go(targetW);
     h.value = go(targetH);
     radius.value = go(isOpen ? theme.radius : rowHeight / 2);
@@ -407,7 +414,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
     opacity: opacity.value,
     borderColor: theme.glow ? interpolateColor(glow.value, [0, 1], [theme.border, theme.glow]) : theme.border,
     borderWidth: theme.glow ? 1.5 : StyleSheet.hairlineWidth,
-    transform: [{ translateY: drag.value }, { rotate: `${shake.value * 2.5}deg` }],
+    transform: [{ translateY: drag.value }],
   }));
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOpacity.value }));
 
@@ -446,7 +453,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
           const { width, height } = e.nativeEvent.layout;
           setCompact({ width: Math.ceil(width), height: Math.ceil(height) });
         }}>{compactRow}</View>
-        <View style={{ width: geo.expandedWidth - 40 }} onLayout={(e) => setBodyHeight(Math.ceil(e.nativeEvent.layout.height))}>{body}</View>
+        <View style={{ width: geo.expandedWidth - OPEN_INSET * 2 }} onLayout={(e) => setBodyHeight(Math.ceil(e.nativeEvent.layout.height))}>{body}</View>
       </View>
 
       <Animated.View
@@ -460,9 +467,9 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
           accessibilityHint={hasBody ? (isOpen ? 'Collapses the island' : 'Expands the island') : undefined}
           style={styles.fill}
         >
-          <View style={{ width: '100%' }}>{compactRow}</View>
+          <View style={{ width: '100%', paddingHorizontal: isOpen ? OPEN_INSET - ROW_PAD : 0, paddingTop: isOpen ? OPEN_TOP : 0 }}>{compactRow}</View>
           {isOpen || bodyHeight ? (
-            <Animated.View pointerEvents={isOpen ? 'auto' : 'none'} style={[{ width: geo.expandedWidth - 40, alignSelf: 'center' }, bodyStyle]}>
+            <Animated.View pointerEvents={isOpen ? 'auto' : 'none'} style={[{ width: geo.expandedWidth - OPEN_INSET * 2, alignSelf: 'center' }, bodyStyle]}>
               {body}
             </Animated.View>
           ) : null}
@@ -491,7 +498,7 @@ export function IslandPreview({ template, state = {}, expanded = false }: { temp
   return (
     <View style={{ backgroundColor: theme.background, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth, borderRadius: expanded ? theme.radius : 999, alignSelf: expanded ? 'stretch' : 'flex-start', overflow: 'hidden' }}>
       {row}
-      {expanded && template.expanded ? <View style={{ paddingHorizontal: 12, paddingBottom: 16 }}><Node node={template.expanded} ctx={ctx} /></View> : null}
+      {expanded && template.expanded ? <View style={{ paddingHorizontal: OPEN_INSET, paddingTop: OPEN_TOP, paddingBottom: OPEN_BOTTOM }}><Node node={template.expanded} ctx={ctx} /></View> : null}
     </View>
   );
 }
@@ -499,7 +506,7 @@ export function IslandPreview({ template, state = {}, expanded = false }: { temp
 const styles = StyleSheet.create({
   island: { position: 'absolute', alignSelf: 'center', overflow: 'hidden' },
   fill: { flex: 1, alignItems: 'center' },
-  compactRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
+  compactRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: ROW_PAD },
   measure: { position: 'absolute', top: -10000, left: 0, opacity: 0 },
   button: { height: 38, borderRadius: 19, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
 });

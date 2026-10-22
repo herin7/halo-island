@@ -135,13 +135,14 @@ const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secon
 export const MOTION = {
   bouncy: { stiffness: 380, damping: 28 },
   snappy: { stiffness: 700, damping: 45 },
-  smooth: { stiffness: 220, damping: 30 },
+  smooth: { stiffness: 260, damping: 32 },
 } as const;
 
 export function springOf(motion: Motion | undefined) {
   if (motion === 'none') return null;
   if (typeof motion === 'object') return motion;
-  return MOTION[motion ?? 'bouncy'];
+  // Default: critically damped, so open and close settle without overshoot.
+  return MOTION[motion ?? 'smooth'];
 }
 
 export function hex(color: string): string {
