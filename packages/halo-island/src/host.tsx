@@ -61,7 +61,10 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     }
     case 'image': {
       const size = node.size ?? 32;
-      return <Image source={{ uri: fill(node.uri, state) }} style={{ width: size, height: size, borderRadius: node.radius ?? 8 }} />;
+      const uri = fill(node.uri, state);
+      const box = { width: size, height: size, borderRadius: node.radius ?? 8 };
+      // An empty uri is a placeholder slot (e.g. a result that hasn't arrived yet).
+      return uri ? <Image source={{ uri }} style={box} /> : <View style={[box, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />;
     }
     case 'ring': {
       const color = node.color ?? theme.accent;

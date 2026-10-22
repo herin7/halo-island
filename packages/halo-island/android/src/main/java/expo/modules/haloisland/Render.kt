@@ -205,7 +205,8 @@ internal class Renderer(
   private fun image(node: JSONObject): View {
     val view = ImageView(context).apply {
       scaleType = ImageView.ScaleType.CENTER_CROP
-      background = rounded(Color.TRANSPARENT, dp(node.optDouble("radius", 8.0).toFloat()))
+      // An empty uri is a placeholder slot (e.g. a result that hasn't arrived yet).
+      background = rounded(Color.argb(20, 255, 255, 255), dp(node.optDouble("radius", 8.0).toFloat()))
       clipToOutline = true
     }
     val uri = fill(node.optString("uri"), state)
