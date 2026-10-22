@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
-import { AppRegistry, Image, Platform, processColor } from 'react-native';
+import { AppRegistry, Appearance, Image, Platform, processColor } from 'react-native';
 
-import { IslandState, IslandTemplate, Motion, payloadSize } from './spec';
+import { IslandState, IslandTemplate, Motion, payloadSize, resolveTheme } from './spec';
 
 export interface Capabilities {
   /** iOS: Live Activities allowed on this device and enabled by the user. */
@@ -130,7 +130,7 @@ if (Platform.OS === 'android') {
 
 // region Normalization — native receives one color format and one motion format.
 
-const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secondary', 'accent', 'border', 'textColor', 'glow']);
+const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secondary', 'accent', 'border', 'textColor', 'glow', 'ink']);
 
 export const MOTION = {
   bouncy: { stiffness: 380, damping: 28 },
@@ -152,16 +152,20 @@ export function hex(color: string): string {
 
 function normalize(value: unknown, key?: string): unknown {
   if (typeof value === 'string' && key && COLOR_KEYS.has(key)) return hex(value);
-  if (Array.isArray(value)) return value.map((v) => normalize(v, key === 'gradient' ? 'color' : undefined));
+  if (Array.isArray(value)) return value.map((v) => normalize(v, key === 'gradient' || key === 'colors' ? 'color' : undefined));
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, normalize(v, k)]));
   }
   return value;
 }
 
+/** JSON for native views: colors normalized the same way as templates. */
+export const nativeJson = (value: unknown) => JSON.stringify(normalize(value));
+
 export function toNative(template: IslandTemplate) {
   const spring = springOf(template.motion);
-  return JSON.stringify({ ...(normalize(template) as object), motion: spring ?? 'none' });
+  const theme = resolveTheme(template.theme, Appearance.getColorScheme());
+  return JSON.stringify({ ...(normalize({ ...template, theme }) as object), motion: spring ?? 'none' });
 }
 
 // endregion

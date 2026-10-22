@@ -150,10 +150,10 @@ internal class OverlayIsland(private val context: Context) {
     renderer.build(current.template.optJSONObject("expanded"), "e")?.let { body ->
       val column = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(6), dp(4), dp(6), dp(12))
+        setPadding(dp(8), dp(6), dp(8), dp(18))
         addView(compactRow(renderer, current, "h"), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, compactHeight))
         addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-          setMargins(dp(12), dp(8), dp(12), 0)
+          setMargins(dp(14), dp(10), dp(14), 0)
         })
       }
       expandedHost.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))

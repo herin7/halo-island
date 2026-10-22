@@ -131,6 +131,10 @@ class HaloIslandModule : Module() {
       mapOf("x" to rect.left / d, "y" to rect.top / d, "width" to rect.width() / d, "height" to rect.height() / d)
     }
 
+    View(HaloGraphicView::class) {
+      Prop("spec") { view: HaloGraphicView, spec: String -> view.setSpec(spec) }
+    }
+
     View(HaloIconView::class) {
       Prop("name") { view: HaloIconView, name: String? -> view.setName(name) }
       Prop("path") { view: HaloIconView, path: String? -> view.setPath(path) }
@@ -189,8 +193,10 @@ class HaloIslandModule : Module() {
 
 /** Native icon for the in-app renderer, so in-app and system islands share one icon set. */
 class HaloIconView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
-  private val image = ImageView(context).also { addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)) }
-  private val vector = PathIconView(context).also { addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)) }
+  // ExpoView stacks children like a LinearLayout; a FrameLayout lets both layers fill the view.
+  private val layers = android.widget.FrameLayout(context).also { addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)) }
+  private val image = ImageView(context).also { layers.addView(it, android.widget.FrameLayout.LayoutParams(-1, -1)) }
+  private val vector = PathIconView(context).also { layers.addView(it, android.widget.FrameLayout.LayoutParams(-1, -1)) }
   private var path: String? = null
   private var tint = Color.WHITE
   var viewBox = 24f
@@ -206,14 +212,30 @@ class HaloIconView(context: Context, appContext: AppContext) : ExpoView(context,
     refresh()
   }
 
+  // Never toggle child visibility here: React Native doesn't re-layout an ExpoView's own
+  // children, so a view made visible later would stay 0x0. An empty path simply draws nothing.
   fun refresh() {
-    vector.visibility = if (path == null) GONE else VISIBLE
-    path?.let { vector.set(it, viewBox, stroke, tint) }
+    vector.set(path ?: "", viewBox, stroke, tint)
+    if (path != null) image.setImageDrawable(null)
   }
 
   fun setTint(color: Int) {
     tint = color
     image.imageTintList = ColorStateList.valueOf(color)
     vector.setTint(color)
+  }
+}
+
+/** Bars, arcs and timelines for the in-app renderer, drawn by the same views as the overlay. */
+class HaloGraphicView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
+  override val shouldUseAndroidLayout = true
+  private val previous = mutableMapOf<String, Float>()
+
+  fun setSpec(json: String) {
+    val spec = JSONObject(json)
+    val view = Renderer(context, Theme(spec.optJSONObject("theme")), spec.optJSONObject("state") ?: JSONObject(), previous) {}
+      .build(spec.optJSONObject("node"), "g") ?: return
+    removeAllViews()
+    addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
   }
 }

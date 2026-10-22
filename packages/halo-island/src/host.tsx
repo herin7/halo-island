@@ -1,15 +1,22 @@
 import { requireNativeView } from 'expo';
 import { ComponentType, ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useWindowDimensions } from 'react-native';
+import { Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useColorScheme, useWindowDimensions } from 'react-native';
 import Animated, { Easing, FadeInDown, FadeOutUp, LinearTransition, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
-import { Active, Cutout, emitAction, hex, native, springOf, store } from './island';
-import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTheme, TextStyle, fill, fontFor, num, tracking, visible } from './spec';
+import { Active, Cutout, emitAction, hex, native, nativeJson, springOf, store } from './island';
+import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTemplate, IslandTheme, TextStyle, fill, fontFor, num, resolveTheme, tracking, visible } from './spec';
 
 let NativeIcon: ComponentType<{ name?: string; path?: string; viewBox?: number; stroke?: number; color?: string; style?: ViewStyle }> | null = null;
 try {
-  if (native) NativeIcon = requireNativeView('HaloIsland');
+  if (native) NativeIcon = requireNativeView('HaloIsland', 'HaloIconView');
 } catch {}
+
+let NativeGraphic: ComponentType<{ spec: string; style?: ViewStyle }> | null = null;
+try {
+  if (native) NativeGraphic = requireNativeView('HaloIsland', 'HaloGraphicView');
+} catch {}
+
+const GRAPHIC_HEIGHT = { bars: (n: { height?: number }) => n.height ?? 40, arc: (n: { height?: number }) => n.height ?? 64, timeline: (n: { size?: number }) => n.size ?? 30 };
 
 // Optional: only apps that install lottie-react-native pay for it.
 let LottieView: ComponentType<{ source: { uri: string }; autoPlay?: boolean; loop?: boolean; style?: ViewStyle }> | null = null;
@@ -22,7 +29,8 @@ const COMPACT_HEIGHT = 37;
 
 // region Nodes
 
-interface Ctx { state: IslandState; theme: Required<IslandTheme>; onAction: (action: string) => void }
+type Theme = typeof DEFAULT_THEME;
+interface Ctx { state: IslandState; theme: Theme; onAction: (action: string) => void }
 
 function Node(props: { node: IslandNode; ctx: Ctx; inRow?: boolean }): ReactNode {
   if (!visible(props.node, props.ctx.state)) return null;
@@ -42,7 +50,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
             flexDirection: row ? 'row' : 'column',
             gap: s.justify === 'between' ? undefined : s.gap ?? 8,
             padding: s.padding,
-            alignItems: flex(s.align ?? (row ? 'center' : 'stretch')),
+            alignItems: s.align === 'baseline' ? 'baseline' : flex(s.align ?? (row ? 'center' : 'stretch')),
             justifyContent: s.justify === 'between' ? 'space-between' : flex(s.justify ?? 'start'),
             backgroundColor: s.background,
             experimental_backgroundImage: gradient(s.gradient),
@@ -80,7 +88,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
           viewBox={node.viewBox}
           stroke={node.stroke}
           color={hex(node.color ?? theme.foreground)}
-          style={{ width: size, height: size }}
+          style={{ width: node.width ?? size, height: size }}
         />
       ) : null;
     }
@@ -89,7 +97,16 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
       const uri = fill(node.uri, state);
       const box = { width: node.width ?? size, height: size, borderRadius: node.radius ?? 8 };
       // An empty uri is a placeholder slot (e.g. a result that hasn't arrived yet).
-      return uri ? <Image source={{ uri }} style={box} resizeMode={node.fit ?? 'cover'} /> : <View style={[box, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />;
+      if (!uri) return <View style={[box, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />;
+      const img = <Image source={{ uri }} style={box} resizeMode={node.fit ?? 'cover'} />;
+      if (!node.glow) return img;
+      // Ambient light: a blurred, enlarged copy bleeds the artwork's color into the black.
+      return (
+        <View>
+          <Image source={{ uri }} blurRadius={24} style={[box, StyleSheet.absoluteFill, { opacity: 0.75, transform: [{ scale: 1.6 }] }]} />
+          {img}
+        </View>
+      );
     }
     case 'ring': {
       const color = node.color ?? theme.accent;
@@ -118,17 +135,26 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
       const size = node.size ?? 28;
       return LottieView ? <LottieView source={{ uri: fill(node.uri, state) }} autoPlay loop={node.loop ?? true} style={{ width: size, height: size }} /> : null;
     }
+    case 'bars':
+    case 'arc':
+    case 'timeline': {
+      if (!NativeGraphic) return null;
+      const height = GRAPHIC_HEIGHT[node.type](node as never);
+      return <NativeGraphic spec={nativeJson({ node, theme, state })} style={{ height, alignSelf: 'stretch', flexGrow: inRow ? 1 : undefined }} />;
+    }
     case 'timer':
       return <Timer to={num(node.to, state)} countUp={node.countUp} style={textStyle(node.style, theme)} />;
     case 'button': {
-      const ink = node.textColor ?? theme.background;
+      const base = node.color ?? theme.accent;
+      const ink = node.textColor ?? (node.tint ? base : theme.background);
+      const fillColor = node.tint ? alpha(base, 0.22) : base;
       const label = node.label ? fill(node.label, state) : undefined;
       return (
         <Pressable
           onPress={() => ctx.onAction(node.action)}
           accessibilityRole="button"
           accessibilityLabel={label ?? node.action}
-          style={({ pressed }) => [styles.button, { backgroundColor: node.color ?? theme.accent, paddingHorizontal: label ? 16 : 10, opacity: pressed ? 0.75 : 1 }]}
+          style={({ pressed }) => [styles.button, { backgroundColor: fillColor, paddingHorizontal: label ? 16 : 10, opacity: pressed ? 0.75 : 1 }]}
         >
           {node.icon && NativeIcon ? <NativeIcon name={fill(node.icon, state)} color={hex(ink)} style={{ width: 16, height: 16 }} /> : null}
           {label ? <Text style={textStyle({ weight: 'bold', color: ink }, theme)}>{label}</Text> : null}
@@ -144,7 +170,7 @@ const gradient = (colors?: string[]) => (colors && colors.length > 1 ? `linear-g
 
 const flex = (v: string) => (v === 'start' ? 'flex-start' : v === 'end' ? 'flex-end' : v) as 'flex-start';
 
-function textStyle(s: TextStyle | undefined, theme: Required<IslandTheme>): RNTextStyle {
+function textStyle(s: TextStyle | undefined, theme: Theme): RNTextStyle {
   const family = s?.font ?? fontFor(theme.fonts, s?.weight ?? 'medium');
   return {
     color: s?.color ?? theme.foreground,
@@ -307,7 +333,8 @@ export function HaloIslandHost({ placement = 'auto' }: { placement?: Placement }
 function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean; placement: Placement }) {
   const geo = useGeometry(placement);
   const reduced = useReducedMotion();
-  const merged = { ...DEFAULT_THEME, ...entry.template.theme };
+  const scheme = useColorScheme();
+  const merged = { ...DEFAULT_THEME, ...resolveTheme(entry.template.theme, scheme) } as Theme;
   const theme = { ...merged, border: merged.border || alpha(merged.accent, 0.3) };
   const spring = reduced ? null : springOf(entry.template.motion);
   const [expanded, setExpanded] = useState(!!entry.options.expanded);
@@ -441,6 +468,30 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
           ) : null}
         </Pressable>
       </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * A static island for galleries, docs and design reviews — same renderer, no live activity.
+ * `expanded` shows the expanded layout; otherwise the compact pill.
+ */
+export function IslandPreview({ template, state = {}, expanded = false }: { template: IslandTemplate; state?: IslandState; expanded?: boolean }) {
+  const scheme = useColorScheme();
+  const merged = { ...DEFAULT_THEME, ...resolveTheme(template.theme, scheme) } as Theme;
+  const theme = { ...merged, border: merged.border || alpha(merged.accent, 0.3) };
+  const ctx: Ctx = { state, theme, onAction: () => {} };
+  const row = (
+    <View style={[styles.compactRow, { minHeight: COMPACT_HEIGHT }]}>
+      {template.compact.leading ? <Node node={template.compact.leading} ctx={ctx} inRow /> : null}
+      <View style={{ minWidth: 28, flexGrow: 1 }} />
+      {template.compact.trailing ? <Node node={template.compact.trailing} ctx={ctx} inRow /> : null}
+    </View>
+  );
+  return (
+    <View style={{ backgroundColor: theme.background, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth, borderRadius: expanded ? theme.radius : 999, alignSelf: expanded ? 'stretch' : 'flex-start', overflow: 'hidden' }}>
+      {row}
+      {expanded && template.expanded ? <View style={{ paddingHorizontal: 12, paddingBottom: 16 }}><Node node={template.expanded} ctx={ctx} /></View> : null}
     </View>
   );
 }

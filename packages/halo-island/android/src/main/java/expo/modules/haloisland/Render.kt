@@ -114,7 +114,7 @@ internal class Renderer(
       "text" -> label(fill(node.optString("text"), state), node.optJSONObject("style")).also { roll(it, path) }
       "icon" -> if (node.has("path")) PathIconView(context).apply {
           set(node.optString("path"), node.optDouble("viewBox", 24.0).toFloat(), node.optDouble("stroke", 0.0).toFloat(), node.color("color", theme.foreground))
-        }.sized(node.optInt("size", 18))
+        }.apply { val s = node.optInt("size", 18); layoutParams = LinearLayout.LayoutParams(px(node.optInt("width", s)), px(s)) }
         else icon(fill(node.optString("name"), state), node.optInt("size", 18), node.color("color", theme.foreground))
       "image" -> image(node)
       "ring" -> RingView(context, dp(node.optDouble("thickness", 3.0).toFloat()), node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.22f)))
@@ -126,6 +126,13 @@ internal class Renderer(
       "track" -> TrackView(context, node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.22f)), fill(node.optString("marker"), state), px(node.optInt("height", 4)))
         .also { animate(it::set, path, num(node.opt("value"), state)) }
       "lottie" -> lottie(node)
+      "bars" -> BarsView(context, node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.18f)), node.optDouble("gap", 3.0).toFloat(), node.optBoolean("animate"))
+        .also { v -> val values = parseValues(node.opt("values"), state); v.set(values, if (node.has("active")) num(node.opt("active"), state).toInt() else Int.MAX_VALUE) }
+      "arc" -> ArcView(context, colorsOf(node), node.color("track", withAlpha(theme.foreground, 0.12f)), node.optDouble("thickness", 5.0).toFloat(), node.optBoolean("glow", true))
+        .also { animate(it::set, path, num(node.opt("value"), state)) }
+      "timeline" -> TimelineView(context, (0 until (node.optJSONArray("icons")?.length() ?: 0)).map { fill(node.optJSONArray("icons")!!.optString(it), state) },
+          node.color("color", theme.accent), node.color("track", withAlpha(theme.foreground, 0.14f)), node.color("ink", theme.background), node.optDouble("size", 30.0).toFloat())
+        .also { it.set(num(node.opt("value"), state)) }
       "timer" -> timer(node)
       "button" -> button(node)
       "spacer" -> View(context)
@@ -145,7 +152,9 @@ internal class Renderer(
       this.orientation = orientation
       val pad = dp(style?.optDouble("padding", 0.0)?.toFloat() ?: 0f).toInt()
       setPadding(pad, pad, pad, pad)
+      if (align == "baseline") isBaselineAligned = true
       val cross = when (align) {
+        "baseline" -> Gravity.BOTTOM
         "start" -> if (isRow) Gravity.TOP else Gravity.START
         "end" -> if (isRow) Gravity.BOTTOM else Gravity.END
         "center" -> if (isRow) Gravity.CENTER_VERTICAL else Gravity.CENTER_HORIZONTAL
@@ -249,7 +258,26 @@ internal class Renderer(
       drawableId(context, uri).takeIf { it != 0 }?.let(view::setImageResource)
     }
     val size = node.optInt("size", 32)
-    return view.apply { layoutParams = LinearLayout.LayoutParams(px(node.optInt("width", size)), px(size)) }
+    val w = px(node.optInt("width", size))
+    if (!node.optBoolean("glow") || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      return view.apply { layoutParams = LinearLayout.LayoutParams(w, px(size)) }
+    }
+    // Ambient light: a blurred, enlarged copy of the artwork bleeds its color into the black.
+    val halo = ImageView(context).apply {
+      scaleType = ImageView.ScaleType.CENTER_CROP
+      alpha = 0.75f
+      scaleX = 1.6f
+      scaleY = 1.6f
+      setRenderEffect(android.graphics.RenderEffect.createBlurEffect(dp(28f), dp(28f), android.graphics.Shader.TileMode.DECAL))
+    }
+    view.drawable?.let(halo::setImageDrawable)
+    view.viewTreeObserver.addOnDrawListener { if (halo.drawable == null) view.drawable?.let(halo::setImageDrawable) }
+    return FrameLayout(context).apply {
+      clipChildren = false
+      addView(halo, FrameLayout.LayoutParams(w, px(size)))
+      addView(view, FrameLayout.LayoutParams(w, px(size)))
+      layoutParams = LinearLayout.LayoutParams(w, px(size))
+    }
   }
 
   /** Looping motion; stops itself when the view leaves the window so rebuilt trees don't leak animators. */
@@ -326,8 +354,10 @@ internal class Renderer(
   }
 
   private fun button(node: JSONObject): View {
-    val bg = node.color("color", theme.accent)
-    val ink = node.color("textColor", theme.background)
+    val tinted = node.optBoolean("tint")
+    val base = node.color("color", theme.accent)
+    val bg = if (tinted) withAlpha(base, 0.22f) else base
+    val ink = node.color("textColor", if (tinted) base else theme.background)
     val action = node.optString("action")
     val label = node.optString("label").takeIf { it.isNotEmpty() }?.let { fill(it, state) }
     return LinearLayout(context).apply {
@@ -394,7 +424,18 @@ internal class Renderer(
     else if (w >= 600) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
   }
 
-  private fun barHeight(node: JSONObject) = if (node.optString("type") == "track") px(24) else px(node.optInt("height", 4))
+  private fun barHeight(node: JSONObject) = when (node.optString("type")) {
+    "track" -> px(24)
+    "bars" -> px(node.optInt("height", 40))
+    "arc" -> px(node.optInt("height", 64))
+    "timeline" -> px(node.optInt("size", 30))
+    else -> px(node.optInt("height", 4))
+  }
+
+  private fun colorsOf(node: JSONObject): IntArray {
+    val list = node.optJSONArray("colors")?.let { a -> (0 until a.length()).mapNotNull { runCatching { Color.parseColor(a.getString(it)) }.getOrNull() } }
+    return if (list.isNullOrEmpty()) intArrayOf(theme.accent) else list.toIntArray()
+  }
 
   private fun View.sized(sizeDp: Int) = apply { layoutParams = LinearLayout.LayoutParams(dp(sizeDp).toInt(), dp(sizeDp).toInt()) }
   private fun dp(value: Float) = value * density
@@ -405,7 +446,7 @@ internal class Renderer(
     private const val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
     private const val match = LinearLayout.LayoutParams.MATCH_PARENT
     private val FIXED_SIZE = setOf("icon", "image", "ring", "spacer")
-    private val BARS = setOf("bar", "steps", "track")
+    private val BARS = setOf("bar", "steps", "track", "bars", "arc", "timeline")
     private val FONTS = mutableMapOf<String, Typeface>()
     // ponytail: grows with distinct mono-text paths per island; tiny in practice, clear per island if it ever matters.
     private val TEXTS = mutableMapOf<String, String>()
@@ -504,7 +545,7 @@ internal class PathIconView(context: Context) : View(context) {
   private val scaled = android.graphics.Path()
 
   fun set(data: String, viewBox: Float, stroke: Float, color: Int) {
-    path = runCatching { androidx.core.graphics.PathParser.createPathFromPathData(data) }.getOrNull()
+    path = if (data.isEmpty()) null else runCatching { androidx.core.graphics.PathParser.createPathFromPathData(data) }.getOrNull()
     this.viewBox = viewBox
     this.stroke = stroke
     paint.color = color
@@ -518,8 +559,10 @@ internal class PathIconView(context: Context) : View(context) {
 
   override fun onDraw(canvas: Canvas) {
     val p = path ?: return
-    val factor = minOf(width, height) / viewBox
+    // Fit the longer side and center the other, so square marks and wordmarks both read right.
+    val factor = maxOf(width, height) / viewBox
     scale.setScale(factor, factor)
+    scale.postTranslate((width - viewBox * factor) / 2f, (height - viewBox * factor) / 2f)
     p.transform(scale, scaled)
     paint.style = if (stroke > 0f) Paint.Style.STROKE else Paint.Style.FILL
     paint.strokeWidth = stroke * factor
