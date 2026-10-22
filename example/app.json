@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.haloisland.example"
@@ -29,6 +29,17 @@
         "halo-island",
         {
           "overlay": true
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "../node_modules/@expo-google-fonts/manrope/500Medium/Manrope_500Medium.ttf",
+            "../node_modules/@expo-google-fonts/manrope/600SemiBold/Manrope_600SemiBold.ttf",
+            "../node_modules/@expo-google-fonts/manrope/700Bold/Manrope_700Bold.ttf",
+            "../node_modules/@expo-google-fonts/manrope/800ExtraBold/Manrope_800ExtraBold.ttf"
+          ]
         }
       ]
     ]

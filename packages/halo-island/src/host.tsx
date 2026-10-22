@@ -8,12 +8,12 @@ import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTemplate, IslandT
 
 let NativeIcon: ComponentType<{ name?: string; path?: string; viewBox?: number; stroke?: number; color?: string; style?: ViewStyle }> | null = null;
 try {
-  if (native) NativeIcon = requireNativeView('HaloIsland', 'HaloIconView');
+  if (native) NativeIcon = requireNativeView('HaloIsland');
 } catch {}
 
 let NativeGraphic: ComponentType<{ spec: string; style?: ViewStyle }> | null = null;
 try {
-  if (native) NativeGraphic = requireNativeView('HaloIsland', 'HaloGraphicView');
+  if (native) NativeGraphic = requireNativeView('HaloGraphic');
 } catch {}
 
 const GRAPHIC_HEIGHT = { bars: (n: { height?: number }) => n.height ?? 40, arc: (n: { height?: number }) => n.height ?? 64, timeline: (n: { size?: number }) => n.size ?? 30 };

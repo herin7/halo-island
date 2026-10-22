@@ -1,13 +1,28 @@
 import { StatusBar } from 'expo-status-bar';
-import { HaloIslandHost, LiveIsland, capabilities, endAll, island, requestPermissions, useIslandAction } from 'halo-island';
+import { HaloIslandHost, IslandPreview, LiveIsland, capabilities, endAll, island, onAction, requestPermissions } from 'halo-island';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Scenario, scenarios } from './showcase';
 
+// Kimbo's light palette: warm paper, so the black islands carry all the color.
+const C = {
+  background: '#F4F1EC',
+  surface: '#FCFAF7',
+  border: '#E3DED6',
+  text: '#171815',
+  secondary: '#565A54',
+  muted: '#858981',
+  brand: '#E85F43',
+};
+const F = { regular: 'Manrope_500Medium', semibold: 'Manrope_600SemiBold', bold: 'Manrope_700Bold', heavy: 'Manrope_800ExtraBold' };
+
+const toast = island({
+  compact: { leading: { type: 'icon', name: 'check', color: '#30D158' }, trailing: { type: 'text', text: '{title}', style: { weight: 'bold' } } },
+  theme: { accent: '#30D158', fonts: F },
+});
+
 export default function App() {
-  const { width } = useWindowDimensions();
-  const columns = width >= 700 ? 3 : 2;
   const [overlay, setOverlay] = useState(false);
   const [caps, setCaps] = useState(capabilities);
   const [playing, setPlaying] = useState<string | null>(null);
@@ -17,11 +32,24 @@ export default function App() {
   useEffect(() => { requestPermissions().then(setCaps); }, []);
   useEffect(() => () => stop(), []);
 
-  useIslandAction('end', () => stop());
-  useIslandAction('toggle', () => {
-    const paused = live.current?.state.playIcon === 'play';
-    live.current?.update({ playIcon: paused ? 'pause' : 'play' });
-  });
+  // Island buttons arrive here as plain strings, from every surface.
+  useEffect(() => onAction((_, action) => {
+    const current = live.current;
+    const say = (title: string) => toast.show({ title }, { duration: 1800 });
+    switch (action) {
+      case 'call': return Linking.openURL('tel:+919876543210');
+      case 'chat': return Linking.openURL('sms:+919876543210');
+      case 'toggle': return current?.update({ playIcon: current.state.playIcon === 'play' ? 'pause' : 'play' });
+      case 'next': return current?.update({ title: 'Apna Bana Le', artist: 'Arijit Singh', progress: 0 });
+      case 'previous': return current?.update({ title: 'Kesariya', artist: 'Arijit Singh', progress: 0 });
+      case 'buy': return say('Buy order placed');
+      case 'sell': return say('Sell order placed');
+      case 'download': return say('Saved to Photos');
+      case 'pause': return say('Run paused');
+      case 'end': return stop();
+      default: return Alert.alert('Island action', action);
+    }
+  }), []);
 
   function stop() {
     timers.current.forEach(clearTimeout);
@@ -35,10 +63,7 @@ export default function App() {
     if (playing === s.id) return stop();
     stop();
     const tpl = island(s.template);
-    // A payment receipt is a moment, not an activity: show it in-app as a toast.
-    const next = s.story.length === 0
-      ? tpl.show(s.initial(), { expanded: true, duration: 4000 })
-      : tpl.start(s.initial(), { overlay });
+    const next = s.toast ? tpl.show(s.initial(), { expanded: true, duration: 4500 }) : tpl.start(s.initial(), { overlay });
     live.current = next;
     setPlaying(s.id);
     let at = 0;
@@ -46,64 +71,62 @@ export default function App() {
       at += delay;
       timers.current.push(setTimeout(() => next.update(patch, { alert }), at));
     }
-    if (s.story.length === 0) timers.current.push(setTimeout(() => setPlaying(null), 4000));
+    if (s.toast) timers.current.push(setTimeout(() => setPlaying(null), 4500));
   }
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.kicker}>HALO ISLAND</Text>
-        <Text style={styles.title}>Live Activities{'\n'}for every phone.</Text>
-        <Text style={styles.lead}>Tap a card. Each one plays a real-app story on the island — in-app, over other apps, and in the status bar.</Text>
+        <Text style={styles.title}>Halo Island</Text>
+        <Text style={styles.lead}>
+          Live Activities for React Native, on iOS and Android. Tap an app to start its island, then press Home: it keeps running over other apps and in the status bar.
+        </Text>
 
-        <View style={styles.chips}>
-          <Chip on={caps.liveUpdates} label="Live Updates" />
-          <Chip on={caps.notifications} label="Notifications" />
-          <Chip on={caps.overlay} label="Overlay" />
-          <Chip on={caps.liveActivities} label="Live Activities" />
-        </View>
-
-        <View style={styles.toggle}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toggleTitle}>Float over other apps</Text>
-            <Text style={styles.toggleHint}>Android · start one, then press Home</Text>
+        <View style={styles.panel}>
+          <View style={styles.setting}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingTitle}>Show over other apps</Text>
+              <Text style={styles.settingHint}>{caps.overlay ? 'Permission granted' : 'Needs the overlay permission'}</Text>
+            </View>
+            <Switch
+              value={overlay}
+              trackColor={{ true: C.text, false: C.border }}
+              thumbColor={C.surface}
+              onValueChange={async (on) => {
+                if (on) setCaps(await requestPermissions({ overlay: true }));
+                setOverlay(on);
+              }}
+            />
           </View>
-          <Switch
-            value={overlay}
-            trackColor={{ true: '#5FCB9C' }}
-            onValueChange={async (on) => {
-              if (on) setCaps(await requestPermissions({ overlay: true }));
-              setOverlay(on);
-            }}
-          />
+          <View style={styles.divider} />
+          <View style={styles.setting}>
+            <Text style={[styles.settingTitle, { flex: 1 }]}>Status bar chip</Text>
+            <Text style={styles.settingValue}>{caps.liveUpdates ? 'Live Updates' : caps.notifications ? 'Ongoing notification' : 'Off'}</Text>
+          </View>
         </View>
 
-        <View style={styles.grid}>
-          {scenarios.map((s) => {
+        <Text style={styles.section}>Apps</Text>
+        <View style={styles.panel}>
+          {scenarios.map((s, i) => {
             const active = playing === s.id;
             return (
-              <Pressable
-                key={s.id}
-                onPress={() => play(s)}
-                style={({ pressed }) => [
-                  styles.card,
-                  { width: `${100 / columns - 2}%`, borderColor: active ? s.accent : '#1C1F22', transform: [{ scale: pressed ? 0.97 : 1 }] },
-                ]}
-              >
-                <View style={[styles.badge, { backgroundColor: `${s.accent}26` }]}>
-                  <Text style={styles.emoji}>{s.emoji}</Text>
-                </View>
-                <Text style={styles.cardTitle}>{s.title}</Text>
-                <Text style={styles.cardSub} numberOfLines={2}>{s.subtitle}</Text>
-                <Text style={[styles.play, { color: s.accent }]}>{active ? '■  Stop' : '▶  Play'}</Text>
-              </Pressable>
+              <View key={s.id}>
+                {i > 0 ? <View style={styles.divider} /> : null}
+                <Pressable onPress={() => play(s)} style={({ pressed }) => [styles.app, pressed && { backgroundColor: '#F1EDE6' }]}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={styles.appTitle}>{s.title}</Text>
+                    <Text style={styles.appAbout} numberOfLines={1}>{s.about}</Text>
+                  </View>
+                  {active ? <Text style={styles.live}>Running</Text> : <IslandPreview template={s.template} state={s.initial()} />}
+                </Pressable>
+              </View>
             );
           })}
         </View>
 
         <Pressable onPress={() => { stop(); endAll(); }} style={styles.endAll}>
-          <Text style={styles.endAllText}>End all islands</Text>
+          <Text style={styles.endAllText}>End every island</Text>
         </Pressable>
       </ScrollView>
       <HaloIslandHost />
@@ -111,34 +134,22 @@ export default function App() {
   );
 }
 
-function Chip({ on, label }: { on: boolean; label: string }) {
-  return (
-    <View style={[styles.chip, on && styles.chipOn]}>
-      <Text style={[styles.chipText, on && { color: '#5FCB9C' }]}>{on ? '●' : '○'}  {label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#07080A' },
-  content: { padding: 18, paddingTop: 120, paddingBottom: 48 },
-  kicker: { color: '#5FCB9C', fontWeight: '800', letterSpacing: 3, fontSize: 12 },
-  title: { color: '#F7F7F2', fontSize: 38, lineHeight: 42, fontWeight: '800', marginTop: 8, letterSpacing: -1 },
-  lead: { color: '#9AA09A', fontSize: 15, lineHeight: 21, marginTop: 10 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 18 },
-  chip: { borderRadius: 99, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#121417' },
-  chipOn: { backgroundColor: '#10241B' },
-  chipText: { color: '#6B716B', fontSize: 12, fontWeight: '600' },
-  toggle: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#121417', borderRadius: 18, padding: 16, marginTop: 18 },
-  toggleTitle: { color: '#F7F7F2', fontSize: 16, fontWeight: '700' },
-  toggleHint: { color: '#6B716B', fontSize: 12, marginTop: 2 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12, marginTop: 18 },
-  card: { backgroundColor: '#0F1113', borderRadius: 22, padding: 16, borderWidth: 1.5, minHeight: 168 },
-  badge: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  emoji: { fontSize: 24 },
-  cardTitle: { color: '#F7F7F2', fontSize: 16, fontWeight: '700', marginTop: 12 },
-  cardSub: { color: '#7A807A', fontSize: 12, lineHeight: 16, marginTop: 4, flex: 1 },
-  play: { fontSize: 13, fontWeight: '800', marginTop: 10 },
-  endAll: { alignItems: 'center', padding: 18, marginTop: 8 },
-  endAllText: { color: '#6B716B', fontWeight: '600' },
+  screen: { flex: 1, backgroundColor: C.background },
+  content: { paddingHorizontal: 20, paddingTop: 116, paddingBottom: 48 },
+  title: { fontFamily: F.bold, fontSize: 40, lineHeight: 46, letterSpacing: -1.4, color: C.text },
+  lead: { fontFamily: F.regular, fontSize: 16, lineHeight: 24, letterSpacing: -0.12, color: C.secondary, marginTop: 8 },
+  panel: { backgroundColor: C.surface, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border, marginTop: 20, overflow: 'hidden' },
+  setting: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  settingTitle: { fontFamily: F.semibold, fontSize: 16, letterSpacing: -0.2, color: C.text },
+  settingHint: { fontFamily: F.regular, fontSize: 13, color: C.muted, marginTop: 2 },
+  settingValue: { fontFamily: F.semibold, fontSize: 14, color: C.secondary },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.border, marginLeft: 16 },
+  section: { fontFamily: F.semibold, fontSize: 13, letterSpacing: 0.1, color: C.muted, marginTop: 28, marginLeft: 4 },
+  app: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, minHeight: 68 },
+  appTitle: { fontFamily: F.bold, fontSize: 17, letterSpacing: -0.3, color: C.text },
+  appAbout: { fontFamily: F.regular, fontSize: 13, color: C.muted },
+  live: { fontFamily: F.bold, fontSize: 13, color: C.brand },
+  endAll: { alignItems: 'center', padding: 20, marginTop: 8 },
+  endAllText: { fontFamily: F.semibold, fontSize: 14, color: C.muted },
 });

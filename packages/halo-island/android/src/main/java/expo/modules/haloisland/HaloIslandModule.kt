@@ -131,10 +131,6 @@ class HaloIslandModule : Module() {
       mapOf("x" to rect.left / d, "y" to rect.top / d, "width" to rect.width() / d, "height" to rect.height() / d)
     }
 
-    View(HaloGraphicView::class) {
-      Prop("spec") { view: HaloGraphicView, spec: String -> view.setSpec(spec) }
-    }
-
     View(HaloIconView::class) {
       Prop("name") { view: HaloIconView, name: String? -> view.setName(name) }
       Prop("path") { view: HaloIconView, path: String? -> view.setPath(path) }
@@ -223,6 +219,16 @@ class HaloIconView(context: Context, appContext: AppContext) : ExpoView(context,
     tint = color
     image.imageTintList = ColorStateList.valueOf(color)
     vector.setTint(color)
+  }
+}
+
+/** Separate module: one native view per module is what Expo resolves reliably. */
+class HaloGraphicModule : Module() {
+  override fun definition() = ModuleDefinition {
+    Name("HaloGraphic")
+    View(HaloGraphicView::class) {
+      Prop("spec") { view: HaloGraphicView, spec: String -> view.setSpec(spec) }
+    }
   }
 }
 

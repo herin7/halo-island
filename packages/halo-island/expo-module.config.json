@@ -1,4 +1,4 @@
 {
   "platforms": ["android"],
-  "android": { "modules": ["expo.modules.haloisland.HaloIslandModule"] }
+  "android": { "modules": ["expo.modules.haloisland.HaloIslandModule", "expo.modules.haloisland.HaloGraphicModule"] }
 }
