@@ -1,4 +1,4 @@
-const { AndroidConfig, withAndroidManifest } = require('expo/config-plugins');
+const { AndroidConfig, withAndroidManifest, withGradleProperties } = require('expo/config-plugins');
 
 const SERVICE = 'expo.modules.haloisland.IslandService';
 const OVERLAY_PERMISSIONS = [
@@ -11,7 +11,14 @@ const OVERLAY_PERMISSIONS = [
  * `["halo-island", { "overlay": true }]` adds the Android cross-app island. Off by default: it
  * needs SYSTEM_ALERT_WINDOW and a specialUse foreground service, which Google Play reviews.
  */
-module.exports = function withHaloIsland(config, { overlay = false, overlayReason = 'Shows the live activity the user started as a floating island across apps.' } = {}) {
+module.exports = function withHaloIsland(config, { overlay = false, rive = false, overlayReason = 'Shows the live activity the user started as a floating island across apps.' } = {}) {
+  if (rive) {
+    config = withGradleProperties(config, (mod) => {
+      mod.modResults = mod.modResults.filter((p) => p.key !== 'haloIsland.rive');
+      mod.modResults.push({ type: 'property', key: 'haloIsland.rive', value: 'true' });
+      return mod;
+    });
+  }
   if (!overlay) return config;
   return withAndroidManifest(config, (mod) => {
     const manifest = mod.modResults.manifest;

@@ -28,7 +28,8 @@
       [
         "halo-island",
         {
-          "overlay": true
+          "overlay": true,
+          "rive": true
         }
       ],
       [

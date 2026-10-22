@@ -64,6 +64,12 @@ type NodeBody =
   | { type: 'bar'; value: Num; height?: number; color?: Color; track?: Color }
   /** A bar with a marker riding along it at `value` — a rider heading to your door. No marker draws a dot. */
   | { type: 'track'; value: Num; marker?: string; height?: number; color?: Color; track?: Color }
+  /**
+   * A Rive file (.riv) by URL or `asset(require(...))`. `trigger` fires that state machine input
+   * whenever its filled value changes — a character that reacts to state. Needs `rive: true` in the
+   * config plugin.
+   */
+  | { type: 'rive'; uri: string; size?: number; width?: number; artboard?: string; stateMachine?: string; trigger?: string }
   /** Lottie from a URL. Needs `lottie-react-native` in the app; renders nothing without it. */
   | { type: 'lottie'; uri: string; size?: number; loop?: boolean }
   /**
@@ -212,6 +218,7 @@ export const timeline = (value: Num, icons: string[], opts?: { size?: number; co
 export const spacer = (size?: number): IslandNode => ({ type: 'spacer', size });
 export const track = (value: Num, marker?: string, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'track', value, marker, ...opts });
 export const lottie = (uri: string, opts?: { size?: number; loop?: boolean }): IslandNode => ({ type: 'lottie', uri, ...opts });
+export const rive = (uri: string, opts?: { size?: number; width?: number; artboard?: string; stateMachine?: string; trigger?: string }): IslandNode => ({ type: 'rive', uri, ...opts });
 /** Adds looping motion: `fx(text('LIVE'), 'pulse')`. */
 export const fx = (node: IslandNode, effect: Effect): IslandNode => ({ ...node, effect });
 /** Shows `node` only while `state[key]` is set: `when('driver', text('{driver}'))`. */

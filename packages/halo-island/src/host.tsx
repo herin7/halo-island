@@ -144,6 +144,11 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
       const size = node.size ?? 28;
       return LottieView ? <LottieView source={{ uri: fill(node.uri, state) }} autoPlay loop={node.loop ?? true} style={{ width: size, height: size }} /> : null;
     }
+    case 'rive': {
+      if (!NativeGraphic) return null;
+      const size = node.size ?? 40;
+      return <NativeGraphic spec={nativeJson({ node, theme, state })} style={{ width: node.width ?? size, height: size }} />;
+    }
     case 'bars':
     case 'arc':
     case 'timeline': {

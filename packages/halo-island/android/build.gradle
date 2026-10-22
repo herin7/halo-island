@@ -20,4 +20,10 @@ dependencies {
   implementation "androidx.dynamicanimation:dynamicanimation:1.1.0"
   // Optional at runtime: used only when the app already ships Lottie (e.g. lottie-react-native).
   compileOnly "com.airbnb.android:lottie:6.6.0"
+  // Rive ships only when the app opts in (config plugin `rive: true` sets haloIsland.rive=true).
+  if (findProperty("haloIsland.rive") == "true") {
+    implementation "app.rive:rive-android:11.12.1"
+  } else {
+    compileOnly "app.rive:rive-android:11.12.1"
+  }
 }

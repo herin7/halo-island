@@ -125,7 +125,8 @@ internal class Renderer(
       "steps" -> steps(node, path)
       "track" -> TrackView(context, node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.22f)), fill(node.optString("marker"), state), px(node.optInt("height", 4)))
         .also { animate(it::set, path, num(node.opt("value"), state)) }
-      "lottie" -> lottie(node)
+      "lottie" -> lottie(node, path)
+      "rive" -> rive(node, path)
       "bars" -> BarsView(context, node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.18f)), node.optDouble("gap", 3.0).toFloat(), node.optBoolean("animate"))
         .also { v -> val values = parseValues(node.opt("values"), state); v.set(values, if (node.has("active")) num(node.opt("active"), state).toInt() else Int.MAX_VALUE) }
       "arc" -> ArcView(context, colorsOf(node), node.color("track", withAlpha(theme.foreground, 0.12f)), node.optDouble("thickness", 5.0).toFloat(), node.optBoolean("glow", true))
@@ -299,14 +300,67 @@ internal class Renderer(
     })
   }
 
+  /**
+   * Animation views survive re-renders: a state update reuses the playing view instead of
+   * restarting it, so characters react rather than reset.
+   */
+  private fun reuse(path: String, key: String, create: () -> View): View {
+    val id = "${System.identityHashCode(previous)}:$path"
+    LIVE[id]?.takeIf { it.first == key }?.second?.let { view ->
+      (view.parent as? android.view.ViewGroup)?.removeView(view)
+      return view
+    }
+    return create().also { LIVE[id] = key to it }
+  }
+
   /** Lottie only if the app ships it (lottie-react-native brings lottie-android). */
-  private fun lottie(node: JSONObject): View? {
+  private fun lottie(node: JSONObject, path: String): View? {
     if (!HAS_LOTTIE) return null
-    return com.airbnb.lottie.LottieAnimationView(context).apply {
-      setAnimationFromUrl(fill(node.optString("uri"), state))
-      repeatCount = if (node.optBoolean("loop", true)) ValueAnimator.INFINITE else 0
-      playAnimation()
+    val uri = fill(node.optString("uri"), state)
+    return reuse(path, uri) {
+      com.airbnb.lottie.LottieAnimationView(context).apply {
+        setAnimationFromUrl(uri)
+        repeatCount = if (node.optBoolean("loop", true)) ValueAnimator.INFINITE else 0
+        playAnimation()
+      }
     }.sized(node.optInt("size", 28))
+  }
+
+  /** Rive only if the app ships rive-android (config plugin `rive: true`). */
+  private fun rive(node: JSONObject, path: String): View? {
+    if (!HAS_RIVE) return null
+    val uri = fill(node.optString("uri"), state)
+    val machine = node.optString("stateMachine").takeIf { it.isNotEmpty() }
+    val artboard = node.optString("artboard").takeIf { it.isNotEmpty() }
+    val view = reuse(path, uri) {
+      app.rive.runtime.kotlin.core.Rive.init(context.applicationContext)
+      app.rive.runtime.kotlin.RiveAnimationView(context).also { v ->
+        loadBytes(uri) { bytes ->
+          v.setRiveBytes(bytes, artboardName = artboard, stateMachineName = machine, autoplay = true,
+            fit = app.rive.runtime.kotlin.core.Fit.CONTAIN, alignment = app.rive.runtime.kotlin.core.Alignment.CENTER)
+        }
+      }
+    } as app.rive.runtime.kotlin.RiveAnimationView
+    val trigger = fill(node.optString("trigger"), state)
+    val key = "${System.identityHashCode(previous)}:$path"
+    if (machine != null && trigger.isNotEmpty() && TRIGGERS.put(key, trigger) != trigger) {
+      view.postDelayed({ runCatching { view.fireState(machine, trigger) } }, 120)
+    }
+    val size = node.optInt("size", 40)
+    view.layoutParams = LinearLayout.LayoutParams(px(node.optInt("width", size)), px(size))
+    return view
+  }
+
+  private fun loadBytes(uri: String, done: (ByteArray) -> Unit) {
+    BYTES[uri]?.let { return done(it) }
+    thread {
+      val bytes = runCatching {
+        if (uri.startsWith("http")) URL(uri).openStream().use { it.readBytes() }
+        else context.resources.openRawResource(context.resources.getIdentifier(uri, "raw", context.packageName)).use { it.readBytes() }
+      }.getOrNull() ?: return@thread
+      BYTES[uri] = bytes
+      MAIN.post { done(bytes) }
+    }
   }
 
   /** Numbers roll: when a mono text changes between renders, the new value slides up into place. */
@@ -450,6 +504,11 @@ internal class Renderer(
     private val FONTS = mutableMapOf<String, Typeface>()
     // ponytail: grows with distinct mono-text paths per island; tiny in practice, clear per island if it ever matters.
     private val TEXTS = mutableMapOf<String, String>()
+    private val HAS_RIVE = runCatching { Class.forName("app.rive.runtime.kotlin.RiveAnimationView") }.isSuccess
+    private val BYTES = mutableMapOf<String, ByteArray>()
+    // ponytail: one entry per animated node per island; cleared only with the process, fine at island scale.
+    private val LIVE = mutableMapOf<String, Pair<String, View>>()
+    private val TRIGGERS = mutableMapOf<String, String>()
     private val HAS_LOTTIE = runCatching { Class.forName("com.airbnb.lottie.LottieAnimationView") }.isSuccess
     private val MAIN = Handler(Looper.getMainLooper())
     // ponytail: unbounded, fine for a handful of avatars/artwork; LruCache if apps rotate many images.
