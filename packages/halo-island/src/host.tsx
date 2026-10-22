@@ -392,7 +392,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
       return;
     }
     const targetW = isOpen ? geo.expandedWidth : Math.min(geo.expandedWidth, Math.max(compact.width, geo.gap + 2 * rowHeight));
-    const targetH = isOpen ? rowHeight + bodyHeight + 20 : rowHeight;
+    const targetH = isOpen ? rowHeight + bodyHeight + 32 : rowHeight;
     w.value = go(targetW);
     h.value = go(targetH);
     radius.value = go(isOpen ? theme.radius : rowHeight / 2);
@@ -446,7 +446,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
           const { width, height } = e.nativeEvent.layout;
           setCompact({ width: Math.ceil(width), height: Math.ceil(height) });
         }}>{compactRow}</View>
-        <View style={{ width: geo.expandedWidth - 24 }} onLayout={(e) => setBodyHeight(Math.ceil(e.nativeEvent.layout.height))}>{body}</View>
+        <View style={{ width: geo.expandedWidth - 40 }} onLayout={(e) => setBodyHeight(Math.ceil(e.nativeEvent.layout.height))}>{body}</View>
       </View>
 
       <Animated.View
@@ -462,7 +462,7 @@ function Island({ entry, leaving, placement }: { entry: Active; leaving: boolean
         >
           <View style={{ width: '100%' }}>{compactRow}</View>
           {isOpen || bodyHeight ? (
-            <Animated.View pointerEvents={isOpen ? 'auto' : 'none'} style={[{ width: geo.expandedWidth - 24, alignSelf: 'center' }, bodyStyle]}>
+            <Animated.View pointerEvents={isOpen ? 'auto' : 'none'} style={[{ width: geo.expandedWidth - 40, alignSelf: 'center' }, bodyStyle]}>
               {body}
             </Animated.View>
           ) : null}

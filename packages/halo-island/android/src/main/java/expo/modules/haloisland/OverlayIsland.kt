@@ -153,7 +153,7 @@ internal class OverlayIsland(private val context: Context) {
         setPadding(dp(8), dp(6), dp(8), dp(18))
         addView(compactRow(renderer, current, "h"), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, compactHeight))
         addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-          setMargins(dp(14), dp(10), dp(14), 0)
+          setMargins(dp(20), dp(10), dp(20), 0)
         })
       }
       expandedHost.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
