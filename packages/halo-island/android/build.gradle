@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.haloisland'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.haloisland"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  implementation "androidx.core:core-ktx:1.17.0"
+  implementation "androidx.dynamicanimation:dynamicanimation:1.1.0"
+}
