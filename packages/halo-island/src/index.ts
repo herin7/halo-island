@@ -4,7 +4,7 @@ export type { AssetSource, Capabilities, LiveIsland, StartOptions } from './isla
 export { HaloIslandHost, IslandPreview } from './host';
 export type { HostProps, Placement } from './host';
 export { lookAt } from './graphics';
-export { ICONS } from './icons';
+export { ICONS, registerIcons } from './icons';
 export { useIsland, useIslandAction } from './hooks';
 export type { UseIslandOptions } from './hooks';
 export { presets } from './presets';

@@ -179,7 +179,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     }
     case 'track': {
       const color = node.color ?? theme.accent;
-      return <Track value={num(node.value, state)} marker={node.marker ? fill(node.marker, state) : ''} end={node.end ? fill(node.end, state) : ''} markerSize={node.markerSize} flip={node.flip} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} grow={inRow} />;
+      return <Track value={num(node.value, state)} marker={node.marker ? fill(node.marker, state) : ''} end={node.end ? fill(node.end, state) : ''} markerSize={node.markerSize} flip={node.flip} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} puck={theme.material === 'glass' ? 'transparent' : theme.background} grow={inRow} />;
     }
     case 'bars': {
       const color = node.color ?? theme.accent;
@@ -296,7 +296,7 @@ function Button({ node, ctx }: { node: ButtonNode; ctx: Ctx }) {
   const base = node.color ?? theme.accent;
   const tinted = node.tint && !armed;
   const ink = armed ? theme.background : node.textColor ?? (node.tint ? base : theme.background);
-  const fillColor = tinted ? alpha(base, 0.2) : base;
+  const fillColor = tinted ? alpha(base, 0.22) : base;
   const label = armed ? fill(node.confirm!, state) : node.label ? fill(node.label, state) : undefined;
   const icon = node.icon ? fill(node.icon, state) : undefined;
   const onPress = () => {
@@ -331,10 +331,10 @@ function Button({ node, ctx }: { node: ButtonNode; ctx: Ctx }) {
     <Pressable onPress={onPress} onPressIn={press.onPressIn} onPressOut={press.onPressOut} style={{ flexGrow: 1 }} {...a11y}>
       <Animated.View
         layout={LinearTransition.springify().dampingRatio(0.75)}
-        style={[styles.button, circle && !armed ? { width: 44, height: 44, borderRadius: 22, paddingHorizontal: 0, alignSelf: 'center' } : { paddingHorizontal: 18 }, { backgroundColor: fillColor, borderColor: tinted ? alpha(base, 0.28) : 'rgba(255,255,255,0.16)' }, !tinted && styles.sheen, press.style]}
+        style={[styles.button, circle && !armed ? { width: 44, height: 44, borderRadius: 22, paddingHorizontal: 0, alignSelf: 'center' } : { paddingHorizontal: 18 }, { backgroundColor: fillColor }, press.style]}
       >
         {icon && !armed ? <Mark name={icon} size={isAsset(icon) ? (circle ? 26 : 22) : circle ? 20 : 17} color={ink} /> : null}
-        {label ? <Animated.Text key={label} entering={FadeIn.duration(200)} style={textStyle({ weight: 'bold', color: ink, size: 15 }, theme)} numberOfLines={1}>{label}</Animated.Text> : null}
+        {label ? <Animated.Text key={label} entering={FadeIn.duration(200)} style={textStyle({ weight: 'semibold', color: ink, size: 15 }, theme)} numberOfLines={1}>{label}</Animated.Text> : null}
       </Animated.View>
     </Pressable>
   );
@@ -472,7 +472,7 @@ function Bar({ value, height, color, track, grow }: { value: number; height: num
   const fillStyle = useAnimatedStyle(() => ({ width: `${p.value * 100}%` }));
   return (
     <View style={{ height, borderRadius: height / 2, backgroundColor: track, overflow: 'hidden', flexGrow: grow ? 1 : undefined }}>
-      <Animated.View style={[{ height, borderRadius: height / 2, backgroundColor: color, experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.32), rgba(255,255,255,0) 70%)' }, fillStyle]} />
+      <Animated.View style={[{ height, borderRadius: height / 2, backgroundColor: color }, fillStyle]} />
     </View>
   );
 }
@@ -524,7 +524,7 @@ function Mark({ name, size, color }: { name: string; size: number; color: string
  * A bar with a marker riding on it — a scooter on its way to your door. The marker eases to each
  * new value and, when it's an object rather than an icon, bobs gently as if it were moving.
  */
-function Track({ value, marker, end, markerSize, flip, height, color, track, grow }: { value: number; marker: string; end: string; markerSize?: number; flip?: boolean; height: number; color: string; track: string; grow?: boolean }) {
+function Track({ value, marker, end, markerSize, flip, height, color, track, puck, grow }: { value: number; marker: string; end: string; markerSize?: number; flip?: boolean; height: number; color: string; track: string; puck: string; grow?: boolean }) {
   const p = useSharedValue(clamp(value));
   const bob = useSharedValue(0);
   const reduced = useReducedMotion();
@@ -547,7 +547,7 @@ function Track({ value, marker, end, markerSize, flip, height, color, track, gro
       </View>
       {end ? <View style={{ position: 'absolute', right: 0 }}><Mark name={end} size={endSize} color={color} /></View> : null}
       {marker ? (
-        <Animated.View style={[{ position: 'absolute', left: 0, width: m, alignItems: 'center' }, markerStyle]}>
+        <Animated.View style={[{ position: 'absolute', left: 0, width: m, alignItems: 'center' }, !isAsset && { height: m + 8, justifyContent: 'center', borderRadius: (m + 8) / 2, backgroundColor: puck }, markerStyle]}>
           <Mark name={marker} size={m} color={color} />
         </Animated.View>
       ) : (
@@ -560,6 +560,7 @@ function Track({ value, marker, end, markerSize, flip, height, color, track, gro
 function Timer({ to, countUp, style }: { to: number; countUp?: boolean; style: RNTextStyle }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
+    if (!Number.isFinite(to)) return;
     // Tick on the second boundary of `to`, so every timer on screen flips together and on time.
     let t: ReturnType<typeof setTimeout>;
     const tick = () => {
@@ -869,7 +870,6 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
     const targetW = isOpen ? geo.expandedWidth : Math.min(geo.expandedWidth, Math.max(compact.width, geo.gap + 2 * rowHeight));
     // Header padding + gap above the body + body + bottom margin.
     const targetH = isOpen ? rowHeight + OPEN_TOP * 2 + bodyHeight + OPEN_BOTTOM : rowHeight;
-    console.log('[halo] size', entry.id, isOpen, targetW, targetH, compact.width);
     w.value = to(targetW);
     h.value = to(targetH);
     radius.value = to(isOpen ? theme.radius : rowHeight / 2);
@@ -1082,9 +1082,7 @@ const styles = StyleSheet.create({
   compactRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: ROW_PAD },
   measure: { position: 'absolute', top: -10000, left: 0, opacity: 0 },
   scrim: { backgroundColor: 'rgba(0,0,0,0.38)' },
-  button: { height: 44, borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: StyleSheet.hairlineWidth },
-  /** A soft top light, so solid buttons read as pressable objects rather than flat stickers. */
-  sheen: { experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0) 55%)' },
+  button: { height: 44, borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
 });
 
 // endregion

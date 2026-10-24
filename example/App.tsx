@@ -17,11 +17,11 @@ import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, w
 import Svg, { Path } from 'react-native-svg';
 
 import { APPS, initialOS, osTemplate } from './os';
-import { Floating, InSync, ScenarioCard } from './cards';
+import { InSync, ScenarioCard } from './cards';
 import { useClaudeBridge } from './useClaudeBridge';
 import { Group, Scenario, groups, scenarios } from './catalog';
 import { C, F, ISLAND_FONTS, R } from './theme';
-import { Aurora, Fade, Glow, Kicker, Lazy, Press, Segmented, Switch, onScrollY, setHaptics } from './ui';
+import { Fade, Kicker, Lazy, Press, Segmented, Switch, onScrollY, setHaptics } from './ui';
 import { openOS, osId, poke, setPetMood, useIslandOS } from './useIslandOS';
 
 const MOTIONS = ['island', 'bouncy', 'snappy', 'smooth'] as const satisfies readonly MotionPreset[];
@@ -43,7 +43,7 @@ export default function App() {
   const fontsLoaded = fontsReady || !!fontError || waited;
   const screen = useWindowDimensions();
   const [material, setMaterial] = useState<Look['material']>('solid');
-  const [aura, setAura] = useState(true);
+  const [aura, setAura] = useState(false);
   const [motion, setMotion] = useState<MotionPreset>('island');
   const [haptics, setHapticsOn] = useState(true);
   const [dim, setDim] = useState(true);
@@ -52,7 +52,7 @@ export default function App() {
   const [playing, setPlaying] = useState<string[]>([]);
   const [mood, setMood] = useState('idle');
   const [group, setGroup] = useState<Group | 'All'>('All');
-  const [bridgeAddr, setBridgeAddr] = useState(android ? '10.0.2.2:7337' : 'localhost:7337');
+  const [bridgeAddr, setBridgeAddr] = useState('localhost:7337');
   const [bridgeToken, setBridgeToken] = useState('');
   const [bridgeOn, setBridgeOn] = useState(false);
   const claude = useClaudeBridge(bridgeAddr, bridgeToken, bridgeOn);
@@ -126,7 +126,6 @@ export default function App() {
       <StatusBar style="light" hidden={android} />
       {/* Everything the glass island can blur on Android lives in here. */}
       <BlurTargetView ref={blurTarget} style={StyleSheet.absoluteFill}>
-      <Aurora />
       {fontsLoaded ? (
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false} scrollEventThrottle={100} onScroll={(e) => onScrollY(e.nativeEvent.contentOffset.y)}>
           {/* Hero */}
@@ -134,14 +133,6 @@ export default function App() {
             <TapHint />
             {/* The mascot: a big island with the same eyes. Both follow your finger. */}
             <View style={s.stage}>
-              <Glow color={C.violet} size={screen.width * 1.1} opacity={0.55} style={{ position: 'absolute' }} />
-              {/* A few of the characters that live in the islands below, hovering around the mascot. */}
-              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                <View style={{ position: 'absolute', left: -6, top: 0 }}><Floating name="scooter" size={64} phase={0} /></View>
-                <View style={{ position: 'absolute', right: -2, top: 6 }}><Floating name="owl" size={58} phase={1} /></View>
-                <View style={{ position: 'absolute', left: 18, bottom: -10 }}><Floating name="rocket" size={52} phase={2} /></View>
-                <View style={{ position: 'absolute', right: 20, bottom: -14 }}><Floating name="dragon" size={60} phase={3} /></View>
-              </View>
               <Lazy estimate={92}>
                 <Press onPress={() => { focus(osId); openOS(); }} scale={0.92} label="Open Island OS">
                   <IslandPreview template={{ compact: { leading: row({ padding: 18 }, spacer(28), pet(mood, { size: 58 })) } }} theme={base} />
@@ -203,7 +194,7 @@ export default function App() {
           </Press>
 
           {/* Live Activities */}
-          <Section kicker="Live Activities" color={C.amber} title="Seventeen islands." serif="All alive.">
+          <Section kicker="Live Activities" color={C.amber} title="Sixteen islands." serif="All alive.">
             Delivery, classes, Claude Code limits, a mom's water reminder, a clan raid. Tap one to play its story on the island; start two and the older one becomes a bubble.
           </Section>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabs}>
@@ -214,8 +205,8 @@ export default function App() {
             ))}
           </ScrollView>
           <View style={s.grid}>
-            {shown.map((sc, i) => (
-              <ScenarioCard key={sc.id} sc={sc} width={gridW} index={i} live={playing.includes(sc.id)} base={base} onPress={playRef} />
+            {shown.map((sc) => (
+              <ScenarioCard key={sc.id} sc={sc} width={gridW} live={playing.includes(sc.id)} base={base} onPress={playRef} />
             ))}
           </View>
 
@@ -267,7 +258,7 @@ export default function App() {
                 ))}
               </View>
             </Setting>
-            <Row title="Aura" hint="Light pooling under the expanded island."><Switch value={aura} onChange={setAura} color={C.violet} label="Aura" /></Row>
+            <Row title="Aura" hint="Brand light pooling under the expanded island. Off is the system look."><Switch value={aura} onChange={setAura} color={C.violet} label="Aura" /></Row>
             <Row title="Dim the app" hint="Behind the expanded island; tap outside to close."><Switch value={dim} onChange={setDim} color={C.violet} label="Dim" /></Row>
             <Row title="Haptics"><Switch value={haptics} onChange={setHapticsOn} color={C.violet} label="Haptics" /></Row>
             {android ? (
@@ -403,7 +394,6 @@ const s = StyleSheet.create({
   railHint: { fontFamily: F.serifItalic, fontSize: 15, color: C.ink3, marginLeft: 'auto' },
   wide: { marginTop: 16, height: 52, borderRadius: R.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(255,255,255,0.04)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   wideText: { fontFamily: F.semibold, fontSize: 15, color: C.ink },
-  card: { borderRadius: R.card, borderWidth: 1, backgroundColor: '#0B0B10', overflow: 'hidden', flex: 1 },
   phone: { marginTop: 18, marginHorizontal: 12, padding: 8, paddingTop: 6, borderTopLeftRadius: 40, borderTopRightRadius: 40, borderWidth: 4, borderBottomWidth: 0, borderColor: '#202027', backgroundColor: 'rgba(255,255,255,0.03)', flex: 1 },
   statusRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 6 },
   statusText: { fontFamily: F.bold, fontSize: 11, color: C.ink3 },
@@ -413,7 +403,7 @@ const s = StyleSheet.create({
   cardAbout: { fontFamily: F.regular, fontSize: 13, color: C.ink3, marginTop: 1 },
   play: { height: 34, paddingHorizontal: 14, borderRadius: 17, justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
   playText: { fontFamily: F.bold, fontSize: 13, color: C.ink },
-  panel: { marginHorizontal: 20, borderRadius: R.card, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(14,14,20,0.72)', overflow: 'hidden' },
+  panel: { marginHorizontal: 20, borderRadius: R.card, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.surface, overflow: 'hidden' },
   setting: { padding: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
   settingTitle: { fontFamily: F.semibold, fontSize: 16, color: C.ink, letterSpacing: -0.2 },
   settingHint: { fontFamily: F.regular, fontSize: 13, color: C.ink3, marginTop: 3, lineHeight: 18 },

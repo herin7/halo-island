@@ -12,7 +12,7 @@ Claude Code ──hooks + statusline──▶ bridge.mjs (your machine) ◀─�
 ## 1. Start the bridge
 
 ```sh
-node tools/island-bridge/bridge.mjs          # localhost (Android emulator reaches it as 10.0.2.2)
+node tools/island-bridge/bridge.mjs          # localhost: emulator or USB phone via adb reverse
 node tools/island-bridge/bridge.mjs --lan    # a phone on the same Wi-Fi
 ```
 
@@ -44,8 +44,10 @@ Add to `~/.claude/settings.json` (merge with what's there; use an absolute path 
 
 ## 3. Connect the app
 
-In the example app, open **Claude Code bridge**, enter `10.0.2.2:7337` (emulator) or the LAN
-address the bridge printed, paste the token, and tap Connect.
+Emulator or USB phone: run `adb reverse tcp:7337 tcp:7337` and keep the app's address at
+`localhost:7337`. Phone on Wi-Fi: start the bridge with `--lan` and enter the address it printed.
+Paste the token and flip **Connect**. The island appears with your limits and pops open when
+Claude asks for permission.
 
 ## Security
 

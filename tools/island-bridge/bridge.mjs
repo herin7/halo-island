@@ -7,7 +7,7 @@
  * requests wait here until you tap Allow or Deny on the island — or time out, and Claude Code
  * asks in the terminal as usual.
  *
- *   node tools/island-bridge/bridge.mjs            # localhost only (Android emulator: 10.0.2.2)
+ *   node tools/island-bridge/bridge.mjs            # localhost only (emulator/USB: adb reverse tcp:7337 tcp:7337)
  *   node tools/island-bridge/bridge.mjs --lan      # reachable from a phone on your Wi-Fi
  *
  * No dependencies. Every request needs the token printed at start (or HALO_BRIDGE_TOKEN).
@@ -167,6 +167,6 @@ createServer(async (req, res) => {
   const lan = Object.values(networkInterfaces()).flat().find((n) => n?.family === 'IPv4' && !n.internal)?.address;
   console.log(`\n  Halo island bridge on :${PORT}${LAN ? ` (LAN ${lan})` : ' (localhost)'}`);
   console.log(`  Token  ${TOKEN}`);
-  console.log(`  App    ${LAN ? lan : '10.0.2.2 (Android emulator)'}:${PORT}`);
+  console.log(`  App    ${LAN ? `${lan}:${PORT}` : `localhost:${PORT}  (Android: adb reverse tcp:${PORT} tcp:${PORT})`}`);
   console.log(`  Hooks  export HALO_BRIDGE_TOKEN=${TOKEN}   (see tools/island-bridge/README.md)\n`);
 });

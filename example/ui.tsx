@@ -1,11 +1,10 @@
-/** Small UI kit for the example: aurora wallpaper, glows, springy pressables, segmented + switch. */
+/** Small UI kit for the example: glyphs, fades, springy pressables, segmented + switch. */
 import * as Haptics from 'expo-haptics';
 import { ReactNode, useEffect, useId, useState } from 'react';
-import { Image, ImageStyle, Platform, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
-
-const GLOW = require('./assets/textures/glow.png');
-import Animated, { Easing, interpolate, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
-import Svg, { Circle, Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { ICONS } from 'halo-island';
+import { Platform, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
+import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { C, F } from './theme';
 
@@ -22,30 +21,6 @@ export const tick = (kind: 'light' | 'select' | 'success' = 'light') => {
 };
 
 // endregion
-
-/** A soft radial light: color at the center fading to nothing. */
-/**
- * A soft radial light: color at the center fading to nothing. A tinted texture rather than an SVG
- * gradient, so it costs nothing when something animates on top of it.
- */
-export function Glow({ color, size, opacity = 1, style }: { color: string; size: number; opacity?: number; style?: StyleProp<ViewStyle> }) {
-  return (
-    <Image
-      source={GLOW}
-      pointerEvents="none"
-      resizeMode="stretch"
-      tintColor={color}
-      style={[{ width: size, height: size, opacity, tintColor: color } as ImageStyle, style as StyleProp<ImageStyle>]}
-    />
-  );
-}
-
-const BLOBS = [
-  { color: '#5B3DF5', x: -0.35, y: -0.12, s: 1.25, dx: 0.22, dy: 0.08, ms: 15000 },
-  { color: '#FF3D8B', x: 0.45, y: 0.05, s: 1.0, dx: -0.2, dy: 0.12, ms: 12000 },
-  { color: '#12C9A0', x: -0.2, y: 0.55, s: 1.1, dx: 0.25, dy: -0.1, ms: 17000 },
-  { color: '#FF9F2E', x: 0.5, y: 0.9, s: 0.9, dx: -0.18, dy: -0.12, ms: 13000 },
-];
 
 /** A vertical fade of the background color — SVG, so it renders the same on iOS, Android and web. */
 export function Fade({ stops, style }: { stops: [offset: number, opacity: number][]; style?: StyleProp<ViewStyle> }) {
@@ -64,36 +39,13 @@ export function Fade({ stops, style }: { stops: [offset: number, opacity: number
   );
 }
 
-/** Slow drifting light behind everything. Transform-only animation, so it stays on the UI thread. */
-export function Aurora() {
-  const { width, height } = useWindowDimensions();
+/** A named icon (built-in or registered with registerIcons), outside the island. */
+export function Glyph({ name, size, color }: { name: string; size: number; color: string }) {
+  const d = ICONS[name];
   return (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: C.bg, overflow: 'hidden' }]}>
-      {BLOBS.map((b, i) => <Blob key={i} {...b} width={width} height={height} />)}
-      {/* Keep the top dark so the black island reads, and the bottom calm for text. */}
-      <Fade style={StyleSheet.absoluteFill} stops={[[0, 0.92], [0.22, 0.25], [0.6, 0.35], [1, 0.9]]} />
-    </View>
-  );
-}
-
-function Blob({ color, x, y, s, dx, dy, ms, width, height }: (typeof BLOBS)[number] & { width: number; height: number }) {
-  const t = useSharedValue(0);
-  const reduced = useReducedMotion();
-  useEffect(() => {
-    if (!reduced) t.value = withRepeat(withTiming(1, { duration: ms, easing: Easing.inOut(Easing.sin) }), -1, true);
-  }, [reduced]);
-  const size = width * 1.5 * s;
-  const style = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: width / 2 - size / 2 + (x + dx * t.value) * width },
-      { translateY: (y + dy * t.value) * height - size / 2 + height * 0.1 },
-      { scale: interpolate(t.value, [0, 1], [1, 1.12]) },
-    ],
-  }));
-  return (
-    <Animated.View renderToHardwareTextureAndroid shouldRasterizeIOS style={[{ position: 'absolute', left: 0, top: 0 }, style]}>
-      <Glow color={color} size={size} opacity={0.55} />
-    </Animated.View>
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      {d ? <Path d={d} fill={color} /> : null}
+    </Svg>
   );
 }
 

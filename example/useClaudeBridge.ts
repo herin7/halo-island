@@ -52,12 +52,15 @@ export function useClaudeBridge(address: string, token: string, enabled: boolean
     if (!enabled || !address || !token) { setStatus('off'); setBridge(null); return; }
     let alive = true;
     let since = -1;
-    const controller = new AbortController();
+    let controller: AbortController | undefined;
     setStatus('connecting');
     (async () => {
       while (alive) {
+        // The bridge answers a long-poll within 25 s; past 30 s the address is wrong or unreachable.
+        const request = (controller = new AbortController());
+        const stall = setTimeout(() => request.abort(), 30_000);
         try {
-          const res = await fetch(`${base}/state?since=${since}`, { headers: { 'x-halo-token': token }, signal: controller.signal });
+          const res = await fetch(`${base}/state?since=${since}`, { headers: { 'x-halo-token': token }, signal: request.signal });
           if (!res.ok) throw new Error(String(res.status));
           const next: BridgeState = await res.json();
           since = next.version;
@@ -67,10 +70,12 @@ export function useClaudeBridge(address: string, token: string, enabled: boolean
           if (!alive) return;
           setStatus('error');
           await new Promise((r) => setTimeout(r, 3000));
+        } finally {
+          clearTimeout(stall);
         }
       }
     })();
-    return () => { alive = false; controller.abort(); };
+    return () => { alive = false; controller?.abort(); };
   }, [enabled, base, token]);
 
   const decide = (decision: 'allow' | 'deny') => {

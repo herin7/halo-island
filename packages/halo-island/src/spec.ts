@@ -192,8 +192,9 @@ export type IslandState = Record<string, string | number | boolean | null | unde
 
 export const DEFAULT_THEME: Required<Omit<IslandTheme, 'light' | 'dark'>> = {
   background: '#000000',
-  foreground: '#F7F7F2',
-  secondary: '#9AA09A',
+  foreground: '#FFFFFF',
+  /** iOS secondary label on black. */
+  secondary: '#98989F',
   accent: '#5FCB9C',
   /** Empty = the key line takes the accent color, as Apple recommends. */
   border: '',

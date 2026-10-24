@@ -50,3 +50,12 @@ export const ICONS: Record<string, string> = {
   volume: 'M3,9v6h4l5,5V4L7,9H3zM16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77s-2.99,-7.86 -7,-8.77z',
   walk: 'M13.5,5.5A2,2 0,1 0,13.5,1.5A2,2 0,0 0,13.5,5.5M9.8,10.9L7,22H9.1L10.9,15L13,17V22H15V15.5L12.9,13.4L13.5,10.4A7.3,7.3 0,0 0,18.7,13L19.4,11.1A5.1,5.1 0,0 1,15.1,9L14.1,7.4C13.5,6.5 12.4,6.1 11.4,6.5L6,8.8V14H8V10.1L9.8,9.3V10.9Z',
 };
+
+/**
+ * Adds icons by name (path data on a 24-unit grid) for every node that takes an icon name: icon,
+ * button, track and arc markers, tiles. Drawn by the in-app renderer; the Android overlay only
+ * knows the built-ins.
+ */
+export function registerIcons(map: Record<string, string>) {
+  Object.assign(ICONS, map);
+}

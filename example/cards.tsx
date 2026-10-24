@@ -1,63 +1,31 @@
-/** Showcase pieces: floating 3D objects, scenario cards, and the in-sync order demo. */
+/** Showcase pieces: scenario cards and the in-sync order demo. */
 import { IslandPreview, IslandTheme, useIsland } from 'halo-island';
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, FadeIn, FadeOut, LinearTransition, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { Scenario, scenarios } from './catalog';
-import { media } from './media';
-
-const GLOW = require('./assets/textures/glow.png');
 import { C, F, R } from './theme';
-import { Glow, Press } from './ui';
-
-// region Floating object
-
-/** A 3D object hovering over a soft contact shadow, drifting on its own phase. */
-export function Floating({ name, size, phase = 0, tilt = 6 }: { name: string; size: number; phase?: number; tilt?: number }) {
-  const t = useSharedValue(0);
-  const reduced = useReducedMotion();
-  useEffect(() => {
-    if (!reduced) t.value = withDelay(phase * 700, withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.sin) }), -1, true));
-  }, [reduced]);
-  const body = useAnimatedStyle(() => ({ transform: [{ translateY: -t.value * size * 0.07 }, { rotate: `${(t.value - 0.5) * tilt}deg` }] }));
-  const shadow = useAnimatedStyle(() => ({ opacity: 0.85 - t.value * 0.3, transform: [{ scaleX: 1 - t.value * 0.16 }] }));
-  const src = media[name as keyof typeof media];
-  return (
-    <View style={{ width: size, height: size * 1.12, alignItems: 'center' }}>
-      {/* A soft contact shadow: the glow texture, tinted black and squashed flat. */}
-      <Animated.Image source={GLOW} tintColor="#000000" resizeMode="stretch" style={[{ position: 'absolute', bottom: -size * 0.03, width: size * 0.9, height: size * 0.2 }, shadow]} />
-      <Animated.View style={body}>
-        {src ? <Image source={src} style={{ width: size, height: size }} resizeMode="contain" /> : null}
-      </Animated.View>
-    </View>
-  );
-}
-
-// endregion
+import { Glyph, Press } from './ui';
 
 // region Scenario card
 
 /** Memoized: the grid re-renders whenever the app does, the cards only when their own props change. */
-export const ScenarioCard = memo(function ScenarioCard({ sc, width, live, base, onPress, index }: { sc: Scenario; width: number; live: boolean; base: IslandTheme; onPress: (sc: Scenario) => void; index: number }) {
+export const ScenarioCard = memo(function ScenarioCard({ sc, width, live, base, onPress }: { sc: Scenario; width: number; live: boolean; base: IslandTheme; onPress: (sc: Scenario) => void }) {
   const state = useMemo(sc.initial, [sc]);
   return (
-    <Press onPress={() => onPress(sc)} scale={0.97} style={[s.card, { width, borderColor: live ? sc.color + 'AA' : 'rgba(255,255,255,0.09)' }]} label={`${live ? 'Stop' : 'Play'} ${sc.title}`}>
-      <View style={[s.cardStage, { height: width * 0.78 }]}>
-        <Glow color={sc.color} size={width * 1.25} opacity={live ? 0.9 : 0.5} style={{ position: 'absolute', top: -width * 0.36 }} />
-        <Floating name={sc.hero} size={width * 0.46} phase={index % 4} />
-      </View>
-      <View style={s.cardIsland} pointerEvents="none">
-        <IslandPreview template={sc.template} state={state} theme={base} />
+    <Press onPress={() => onPress(sc)} scale={0.97} style={[s.card, { width, borderColor: live ? sc.color : C.line }]} label={`${live ? 'Stop' : 'Play'} ${sc.title}`}>
+      <View style={s.cardStage} pointerEvents="none">
+        <View style={s.cardIsland}>
+          <IslandPreview template={sc.template} state={state} theme={base} />
+        </View>
       </View>
       <View style={s.cardText}>
-        <Text style={s.group}>{sc.group}</Text>
-        <Text style={s.title} numberOfLines={1}>{sc.title}</Text>
+        <View style={s.titleRow}>
+          <Text style={s.title} numberOfLines={1}>{sc.title}</Text>
+          {live ? <LiveDot color={sc.color} /> : null}
+        </View>
         <Text style={s.about} numberOfLines={2}>{sc.about}</Text>
-      </View>
-      <View style={[s.pill, live && { backgroundColor: sc.color }]}>
-        {live ? <LiveDot color={sc.color === '#FFFFFF' ? '#000' : '#fff'} /> : null}
-        <Text style={[s.pillText, live && { color: sc.color === '#FFFFFF' ? '#000' : '#fff' }]}>{live ? 'Live' : sc.toast ? 'Show' : 'Play'}</Text>
       </View>
     </Press>
   );
@@ -76,11 +44,11 @@ function LiveDot({ color }: { color: string }) {
 
 const SWIGGY = scenarios.find((x) => x.id === 'swiggy')!;
 const STAGES = [
-  { status: 'Order confirmed', eta: 30, progress: 0.06, vehicle: 'steaming-bowl', rider: '' },
-  { status: 'Packing your biryani', eta: 24, progress: 0.2, vehicle: 'steaming-bowl', rider: '' },
-  { status: 'Ravi picked it up', eta: 16, progress: 0.42, vehicle: 'scooter', rider: 'Ravi' },
-  { status: 'Ravi is 2 km away', eta: 8, progress: 0.7, vehicle: 'scooter', rider: 'Ravi' },
-  { status: 'Delivered. Enjoy!', eta: 0, progress: 1, vehicle: 'house', rider: '', delivered: true },
+  { status: 'Order confirmed', eta: 30, progress: 0.06, vehicle: 'cooking-pot', rider: '' },
+  { status: 'Packing your biryani', eta: 24, progress: 0.2, vehicle: 'cooking-pot', rider: '' },
+  { status: 'Ravi picked it up', eta: 16, progress: 0.42, vehicle: 'moped', rider: 'Ravi' },
+  { status: 'Ravi is 2 km away', eta: 8, progress: 0.7, vehicle: 'moped', rider: 'Ravi' },
+  { status: 'Delivered', eta: 0, progress: 1, vehicle: 'house', rider: '', delivered: true },
 ];
 
 /**
@@ -100,7 +68,6 @@ export function InSync({ width }: { width: number }) {
     alertOn: ['vehicle'],
     onAction: (action) => {
       if (action === 'call') setNote('Calling Ravi…');
-      if (action === 'rate') { setNote('Thanks for rating!'); }
     },
   });
   useEffect(() => { if (note) { const t = setTimeout(() => setNote(''), 2500); return () => clearTimeout(t); } }, [note]);
@@ -108,7 +75,7 @@ export function InSync({ width }: { width: number }) {
   return (
     <View style={[s.sync, { width }]}>
       <View style={s.syncHead}>
-        <Floating name={st.vehicle} size={58} tilt={4} />
+        <View style={s.syncMark}><Glyph name={st.vehicle} size={22} color="#FC8019" /></View>
         <View style={{ flex: 1, gap: 2 }}>
           <Animated.Text key={state.status} entering={FadeIn.duration(220)} exiting={FadeOut.duration(120)} style={s.syncStatus} numberOfLines={1}>{state.status}</Animated.Text>
           <Text style={s.syncItems} numberOfLines={1}>{state.items}</Text>
@@ -151,7 +118,7 @@ function Progress({ value }: { value: number }) {
 
 function Action({ label, color, solid, onPress }: { label: string; color: string; solid?: boolean; onPress: () => void }) {
   return (
-    <Press onPress={onPress} haptic="select" style={[s.action, solid ? { backgroundColor: color } : { backgroundColor: color + '1F', borderColor: color + '44' }]} label={label}>
+    <Press onPress={onPress} haptic="select" style={[s.action, solid ? { backgroundColor: color } : { backgroundColor: color + '24' }]} label={label}>
       <Text style={[s.actionText, { color: solid ? '#1E0A00' : color }]}>{label}</Text>
     </Press>
   );
@@ -160,26 +127,25 @@ function Action({ label, color, solid, onPress }: { label: string; color: string
 // endregion
 
 const s = StyleSheet.create({
-  card: { borderRadius: 26, borderWidth: 1, backgroundColor: '#0C0C11', overflow: 'hidden', paddingBottom: 14, experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 40%)' },
-  cardStage: { alignItems: 'center', justifyContent: 'flex-end', overflow: 'hidden' },
-  cardIsland: { alignItems: 'center', marginTop: -6, transform: [{ scale: 0.86 }] },
-  cardText: { paddingHorizontal: 14, marginTop: 8, gap: 2 },
-  group: { fontFamily: F.semibold, fontSize: 10.5, letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink3 },
-  title: { fontFamily: F.bold, fontSize: 17, letterSpacing: -0.3, color: C.ink },
-  about: { fontFamily: F.regular, fontSize: 12.5, lineHeight: 17, color: C.ink2, minHeight: 34 },
-  pill: { alignSelf: 'flex-start', marginLeft: 14, marginTop: 10, height: 30, paddingHorizontal: 12, borderRadius: R.pill, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.09)' },
-  pillText: { fontFamily: F.bold, fontSize: 12.5, color: C.ink },
-  sync: { alignSelf: 'center', borderRadius: R.card, padding: 18, gap: 14, backgroundColor: '#0E0B09', borderWidth: 1, borderColor: 'rgba(252,128,25,0.28)', experimental_backgroundImage: 'linear-gradient(180deg, rgba(252,128,25,0.14), rgba(252,128,25,0) 55%)' },
+  card: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, backgroundColor: C.surface, overflow: 'hidden', paddingBottom: 14 },
+  cardStage: { height: 76, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000000', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
+  cardIsland: { transform: [{ scale: 0.82 }] },
+  cardText: { paddingHorizontal: 14, marginTop: 12, gap: 3 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  title: { fontFamily: F.semibold, fontSize: 15.5, letterSpacing: -0.2, color: C.ink, flexShrink: 1 },
+  about: { fontFamily: F.regular, fontSize: 13, lineHeight: 18, color: C.ink3, minHeight: 36 },
+  sync: { alignSelf: 'center', borderRadius: R.card, padding: 18, gap: 16, backgroundColor: C.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line },
+  syncMark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(252,128,25,0.18)' },
   syncHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  syncStatus: { fontFamily: F.bold, fontSize: 17, color: C.ink, letterSpacing: -0.3 },
+  syncStatus: { fontFamily: F.semibold, fontSize: 17, color: C.ink, letterSpacing: -0.3 },
   syncItems: { fontFamily: F.regular, fontSize: 13, color: C.ink2 },
-  syncEta: { fontFamily: F.heavy, fontSize: 34, lineHeight: 36, color: '#FC8019', fontVariant: ['tabular-nums'], letterSpacing: -1 },
-  syncUnit: { fontFamily: F.bold, fontSize: 12, color: '#FC8019', marginTop: -2 },
-  track: { height: 6, borderRadius: 3, backgroundColor: 'rgba(252,128,25,0.18)', overflow: 'hidden' },
-  fill: { height: 6, borderRadius: 3, backgroundColor: '#FC8019' },
+  syncEta: { fontFamily: F.semibold, fontSize: 30, lineHeight: 34, color: '#FC8019', fontVariant: ['tabular-nums'], letterSpacing: -1 },
+  syncUnit: { fontFamily: F.semibold, fontSize: 12, color: '#FC8019', marginTop: -2 },
+  track: { height: 4, borderRadius: 2, backgroundColor: '#2C2C2E', overflow: 'hidden' },
+  fill: { height: 4, borderRadius: 2, backgroundColor: '#FC8019' },
   syncRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  action: { height: 40, paddingHorizontal: 16, borderRadius: 20, justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
-  actionText: { fontFamily: F.bold, fontSize: 14 },
+  action: { height: 40, paddingHorizontal: 16, borderRadius: 20, justifyContent: 'center' },
+  actionText: { fontFamily: F.semibold, fontSize: 14 },
   syncFoot: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   syncDot: { width: 7, height: 7, borderRadius: 4 },
   syncFootText: { fontFamily: F.medium, fontSize: 12.5, color: C.ink3 },

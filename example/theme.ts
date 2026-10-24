@@ -1,12 +1,13 @@
-/** Design tokens for the example app: dark, cinematic, one UI family plus a display serif. */
+/** Design tokens for the example app: true black like the island, one UI family plus a display serif. */
 import { Platform } from 'react-native';
 
 export const C = {
-  bg: '#05050A',
-  ink: '#F5F3EE',
-  ink2: 'rgba(245,243,238,0.66)',
-  ink3: 'rgba(245,243,238,0.42)',
-  line: 'rgba(255,255,255,0.09)',
+  bg: '#000000',
+  surface: '#0E0E10',
+  ink: '#FFFFFF',
+  ink2: 'rgba(235,235,245,0.68)',
+  ink3: 'rgba(235,235,245,0.42)',
+  line: 'rgba(255,255,255,0.1)',
   card: 'rgba(255,255,255,0.045)',
   cardHi: 'rgba(255,255,255,0.08)',
   violet: '#8B7CFF',
@@ -30,7 +31,7 @@ export const F = {
   mono: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'ui-monospace, Menlo, monospace' }),
 };
 
-/** The island's typeface, per weight (Host + previews get it as the base theme). */
-export const ISLAND_FONTS = { regular: F.medium, medium: F.medium, semibold: F.semibold, bold: F.bold, heavy: F.heavy };
+/** The island's typeface, per weight. iOS keeps SF, the system island's own face. */
+export const ISLAND_FONTS = Platform.OS === 'ios' ? {} : { regular: F.regular, medium: F.medium, semibold: F.semibold, bold: F.bold, heavy: F.heavy };
 
 export const R = { card: 28, pill: 999 };
