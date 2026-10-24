@@ -42,64 +42,63 @@ function LiveDot({ color }: { color: string }) {
 
 // region In sync
 
-const SWIGGY = scenarios.find((x) => x.id === 'swiggy')!;
+const INDIGO = scenarios.find((x) => x.id === 'indigo')!;
+const BLUE = '#5E8BFF';
 const STAGES = [
-  { status: 'Order confirmed', eta: 30, progress: 0.06, vehicle: 'cooking-pot', rider: '' },
-  { status: 'Packing your biryani', eta: 24, progress: 0.2, vehicle: 'cooking-pot', rider: '' },
-  { status: 'Ravi picked it up', eta: 16, progress: 0.42, vehicle: 'moped', rider: 'Ravi' },
-  { status: 'Ravi is 2 km away', eta: 8, progress: 0.7, vehicle: 'moped', rider: 'Ravi' },
-  { status: 'Delivered', eta: 0, progress: 1, vehicle: 'house', rider: '', delivered: true },
+  { status: 'Boarding in', gate: 'G24', mins: 38, progress: 0.12 },
+  { status: 'Gate changed · boarding in', gate: 'G27', mins: 24, progress: 0.22 },
+  { status: 'Boarding now', gate: 'G27', mins: 1, progress: 0.35, boarding: true },
+  { status: 'Gate closes in', gate: 'G27', mins: 0.5, progress: 0.4, boarding: true },
 ];
 
 /**
- * One order, two views. The card and the island render the same React state through useIsland;
+ * One flight, two views. The card and the island render the same React state through useIsland;
  * buttons on either side change it, and both move together.
  */
 export function InSync({ width }: { width: number }) {
   const [tracking, setTracking] = useState(false);
   const [stage, setStage] = useState(0);
-  const [tip, setTip] = useState(0);
   const [note, setNote] = useState('');
   const st = STAGES[stage];
-  const state = { ...st, items: `Meghana Foods · 2 items${tip ? ` · ₹${tip} tip` : ''}`, status: note || st.status };
+  // Times are fixed when the stage changes, so re-renders don't resend the clock.
+  const boardAt = useMemo(() => Date.now() + st.mins * 60_000, [stage, tracking]);
+  const { mins: _m, ...shown } = st;
+  const state = { ...shown, status: note || st.status, boardAt };
 
-  useIsland(SWIGGY.template, tracking ? state : null, {
+  useIsland(INDIGO.template, tracking ? state : null, {
     id: 'in-sync',
-    alertOn: ['vehicle'],
-    onAction: (action) => {
-      if (action === 'call') setNote('Calling Ravi…');
-    },
+    alertOn: ['gate', 'boarding'],
+    onAction: (action) => { if (action === 'pass') setNote('Boarding pass on screen'); },
   });
   useEffect(() => { if (note) { const t = setTimeout(() => setNote(''), 2500); return () => clearTimeout(t); } }, [note]);
 
   return (
     <View style={[s.sync, { width }]}>
       <View style={s.syncHead}>
-        <View style={s.syncMark}><Glyph name={st.vehicle} size={22} color="#FC8019" /></View>
+        <View style={s.syncMark}><Glyph name="airplane-tilt" size={22} color={BLUE} /></View>
         <View style={{ flex: 1, gap: 2 }}>
           <Animated.Text key={state.status} entering={FadeIn.duration(220)} exiting={FadeOut.duration(120)} style={s.syncStatus} numberOfLines={1}>{state.status}</Animated.Text>
-          <Text style={s.syncItems} numberOfLines={1}>{state.items}</Text>
+          <Text style={s.syncItems} numberOfLines={1}>6E 2134 · BLR → DEL</Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={s.syncEta}>{st.eta}</Text>
-          <Text style={s.syncUnit}>min</Text>
+          <Text style={s.syncEta}>{st.gate}</Text>
+          <Text style={s.syncUnit}>gate</Text>
         </View>
       </View>
       <Progress value={st.progress} />
       <View style={s.syncRow}>
         {!tracking ? (
-          <Action label="Start tracking" color="#FC8019" solid onPress={() => { setStage(0); setTip(0); setTracking(true); }} />
+          <Action label="Track flight" color={BLUE} solid onPress={() => { setStage(0); setTracking(true); }} />
         ) : (
           <>
-            <Action label={stage < STAGES.length - 1 ? 'Next stage' : 'Restart'} color="#FC8019" solid onPress={() => setStage((x) => (x + 1) % STAGES.length)} />
-            <Action label={`+₹20 tip`} color="#FC8019" onPress={() => setTip((x) => x + 20)} />
+            <Action label={stage < STAGES.length - 1 ? 'Next update' : 'Restart'} color={BLUE} solid onPress={() => setStage((x) => (x + 1) % STAGES.length)} />
             <Action label="Stop" color="#FFFFFF" onPress={() => setTracking(false)} />
           </>
         )}
       </View>
       <Animated.View layout={LinearTransition} style={s.syncFoot}>
         <View style={[s.syncDot, { backgroundColor: tracking ? '#30D158' : C.ink3 }]} />
-        <Text style={s.syncFootText}>{tracking ? 'In sync with the island · tap Call on it' : 'Start tracking to light up the island'}</Text>
+        <Text style={s.syncFootText}>{tracking ? 'In sync with the island · board to see the pass' : 'Track the flight to light up the island'}</Text>
       </Animated.View>
     </View>
   );
@@ -119,7 +118,7 @@ function Progress({ value }: { value: number }) {
 function Action({ label, color, solid, onPress }: { label: string; color: string; solid?: boolean; onPress: () => void }) {
   return (
     <Press onPress={onPress} haptic="select" style={[s.action, solid ? { backgroundColor: color } : { backgroundColor: color + '24' }]} label={label}>
-      <Text style={[s.actionText, { color: solid ? '#1E0A00' : color }]}>{label}</Text>
+      <Text style={[s.actionText, { color: solid ? '#FFFFFF' : color }]}>{label}</Text>
     </Press>
   );
 }
@@ -135,14 +134,14 @@ const s = StyleSheet.create({
   title: { fontFamily: F.semibold, fontSize: 15.5, letterSpacing: -0.2, color: C.ink, flexShrink: 1 },
   about: { fontFamily: F.regular, fontSize: 13, lineHeight: 18, color: C.ink3, minHeight: 36 },
   sync: { alignSelf: 'center', borderRadius: R.card, padding: 18, gap: 16, backgroundColor: C.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line },
-  syncMark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(252,128,25,0.18)' },
+  syncMark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(94,139,255,0.18)' },
   syncHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   syncStatus: { fontFamily: F.semibold, fontSize: 17, color: C.ink, letterSpacing: -0.3 },
   syncItems: { fontFamily: F.regular, fontSize: 13, color: C.ink2 },
-  syncEta: { fontFamily: F.semibold, fontSize: 30, lineHeight: 34, color: '#FC8019', fontVariant: ['tabular-nums'], letterSpacing: -1 },
-  syncUnit: { fontFamily: F.semibold, fontSize: 12, color: '#FC8019', marginTop: -2 },
+  syncEta: { fontFamily: F.semibold, fontSize: 30, lineHeight: 34, color: '#5E8BFF', fontVariant: ['tabular-nums'], letterSpacing: -1 },
+  syncUnit: { fontFamily: F.semibold, fontSize: 12, color: '#5E8BFF', marginTop: -2 },
   track: { height: 4, borderRadius: 2, backgroundColor: '#2C2C2E', overflow: 'hidden' },
-  fill: { height: 4, borderRadius: 2, backgroundColor: '#FC8019' },
+  fill: { height: 4, borderRadius: 2, backgroundColor: '#5E8BFF' },
   syncRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   action: { height: 40, paddingHorizontal: 16, borderRadius: 20, justifyContent: 'center' },
   actionText: { fontFamily: F.semibold, fontSize: 14 },

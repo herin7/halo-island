@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
+  pull_request:
+    paths-ignore: ['**.md', 'docs/**']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Library tests
+        run: bun test
+        working-directory: packages/halo-island
+      - name: Typecheck library and example app
+        run: |
+          bunx tsc --noEmit -p packages/halo-island
+          bunx tsc --noEmit -p example
+      - name: Build the website
+        run: bun install && bun run build
+        working-directory: website
+      - name: Package contents
+        run: npm pack --dry-run
+        working-directory: packages/halo-island

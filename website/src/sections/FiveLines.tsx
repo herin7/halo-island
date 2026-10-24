@@ -8,22 +8,23 @@ import { Phone } from '../components/Phone';
 import { Island } from '../island/Island';
 import { Head, Rise, useInView, useViewport } from '../ui';
 
-const swiggy = scenarios.find((s) => s.id === 'swiggy')!;
+const flight = scenarios.find((s) => s.id === 'indigo')!;
+const board = (mins: number) => Date.now() + mins * 60_000;
 
 const SRC = `import { island, useIslandAction } from 'halo-island'
 
-const order = island(swiggy)
-const live = order.start({ eta: 32, progress: 0 })
-live.update({ eta: 9, rider: 'Ravi' }, { alert: true })
-useIslandAction('call', () => dial(rider))
+const flight = island(indigo)
+const live = flight.start({ gate: 'G24', boardAt, progress: 0.1 })
+live.update({ gate: 'G27', boarding: true }, { alert: true })
+useIslandAction('pass', () => showBoardingPass())
 live.end()`;
 
 /** What each line does to the island, so hovering the code drives it. */
 const LINES: Record<number, { state?: IslandState; open?: boolean; gone?: boolean; note: string }> = {
-  2: { state: { status: 'Order confirmed', items: 'Meghana Foods · 2 items', eta: 32, progress: 0.04, vehicle: 'cooking-pot' }, open: false, note: 'island(template) — nothing on screen yet, just the design' },
-  3: { state: { status: 'Order confirmed', items: 'Meghana Foods · 2 items', eta: 32, progress: 0.04, vehicle: 'cooking-pot' }, open: false, note: 'start(state) — appears on every surface the phone has' },
-  4: { state: { status: 'Ravi is 2 km away', items: 'Meghana Foods · 2 items', eta: 9, progress: 0.66, rider: 'Ravi', vehicle: 'moped' }, open: true, note: 'update(patch, { alert }) — only state travels; alert pops it open' },
-  5: { state: { status: 'Ravi is 2 km away', items: 'Meghana Foods · 2 items', eta: 9, progress: 0.66, rider: 'Ravi', vehicle: 'moped' }, open: true, note: 'useIslandAction — buttons work from the island, lock screen, overlay. Tap “Call Ravi”.' },
+  2: { state: { status: 'Boarding in', gate: 'G24', boardAt: board(38), progress: 0.1 }, open: false, note: 'island(template) — nothing on screen yet, just the design' },
+  3: { state: { status: 'Boarding in', gate: 'G24', boardAt: board(38), progress: 0.1 }, open: false, note: 'start(state) — appears on every surface the phone has' },
+  4: { state: { status: 'Gate changed · boarding now', gate: 'G27', boardAt: board(1), progress: 0.35, boarding: true }, open: true, note: 'update(patch, { alert }) — only state travels; alert pops it open' },
+  5: { state: { status: 'Gate changed · boarding now', gate: 'G27', boardAt: board(1), progress: 0.35, boarding: true }, open: true, note: 'useIslandAction — buttons work from the island, lock screen, overlay. Tap “Boarding pass”.' },
   6: { gone: true, note: 'end() — gone everywhere, at once' },
 };
 const ORDER = [3, 4, 5, 6, 2];
@@ -66,13 +67,13 @@ export function FiveLines() {
           </Rise>
           <Rise delay={0.1} className="split-phone">
             <div style={{ maxWidth: 340, margin: '0 auto' }}>
-              <Phone crop={vw < 900 ? 0.46 : 0.72} label="iPhone running the Swiggy island">
+              <Phone crop={vw < 900 ? 0.46 : 0.72} label="iPhone running the IndiGo island">
                 <div className="wall" style={{ background: 'radial-gradient(90% 50% at 50% 0%, #3a1d08, #000 70%)' }} />
                 <div className="phone-island">
                   <AnimatePresence>
                     {!step.gone ? (
                       <motion.div key="isl" initial={{ scale: 0.3, opacity: 0, filter: 'blur(6px)' }} animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }} exit={{ scale: 0.3, opacity: 0, filter: 'blur(6px)' }} transition={{ type: 'spring', stiffness: 340, damping: 26 }} style={{ transformOrigin: 'top center' }}>
-                        <Island template={swiggy.template} state={step.state ?? {}} expanded={open} onExpandedChange={setOpen} width={371} gap={44}
+                        <Island template={flight.template} state={step.state ?? {}} expanded={open} onExpandedChange={setOpen} width={371} gap={44}
                           onAction={(a) => { setLog(`'${a}' → your handler runs`); setTimeout(() => setLog(null), 2200); }} />
                       </motion.div>
                     ) : null}

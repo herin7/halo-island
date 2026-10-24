@@ -10,32 +10,32 @@ import { themeOf } from '../island/util';
 import { useStory } from '../story';
 import { Head, Rise, useInView } from '../ui';
 
-const swiggy = scenarios.find((s) => s.id === 'swiggy')!;
-const ORANGE = '#FC8019';
+const flight = scenarios.find((s) => s.id === 'indigo')!;
+const BLUE = '#5E8BFF';
 
 export function Surfaces() {
   const ref = useRef<HTMLElement>(null);
   const inView = useInView(ref, '-20% 0px');
   const [open, setOpen] = useState(false);
   const pop = () => { setOpen(true); setTimeout(() => setOpen(false), 3200); };
-  const { state } = useStory(swiggy, inView, { onAlert: pop, loopAfter: 3500, delay: 1200 });
-  const theme = themeOf(swiggy.template);
+  const { state } = useStory(flight, inView, { onAlert: pop, loopAfter: 3500, delay: 1200 });
+  const theme = themeOf(flight.template);
   const ctx: Ctx = { state, theme, onAction: () => {}, setState: () => {} };
-  const card = swiggy.template.lockScreen ?? swiggy.template.expanded!;
+  const card = flight.template.lockScreen ?? flight.template.expanded!;
   return (
-    <section className="section" id="surfaces" ref={ref} style={{ ['--accent' as string]: ORANGE }}>
+    <section className="section" id="surfaces" ref={ref} style={{ ['--accent' as string]: BLUE }}>
       <div className="wrap">
-        <Head center eyebrow="Every surface" title={<>One design. <em>Both phones.</em></>} lede="The same template and the same state, rendered natively everywhere it can live. Below: one Swiggy order, in sync, on an iPhone and a Pixel." />
+        <Head center eyebrow="Every surface" title={<>One design. <em>Both phones.</em></>} lede="The same template and the same state, rendered natively everywhere it can live. Below: one IndiGo flight, in sync, on an iPhone and a Pixel." />
         <Rise className="duo">
           <figure>
             <Phone label="iPhone: Dynamic Island and a Lock Screen Live Activity">
               <div className="wall" style={{ background: 'linear-gradient(180deg, #1a1430, #050208 60%)' }} />
               <div className="lock-date">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).replace(',', '')}</div>
               <div className="lock-time">9:41</div>
-              <div className="phone-island"><Island template={swiggy.template} state={state} expanded={open} onExpandedChange={setOpen} width={371} gap={44} /></div>
+              <div className="phone-island"><Island template={flight.template} state={state} expanded={open} onExpandedChange={setOpen} width={371} gap={44} /></div>
               <div className="lock">
                 <div className="la-card">
-                  <div className="la-tag">{swiggy.template.compact.leading ? <Node node={swiggy.template.compact.leading} ctx={ctx} inRow /> : null}<span>Swiggy · Live Activity</span></div>
+                  <div className="la-tag">{flight.template.compact.leading ? <Node node={flight.template.compact.leading} ctx={ctx} inRow /> : null}<span>IndiGo · Live Activity</span></div>
                   <Node node={card} ctx={ctx} />
                 </div>
               </div>
@@ -45,11 +45,11 @@ export function Surfaces() {
           <figure>
             <Phone kind="pixel" label="Pixel: island over other apps, Live Update notification and status chip">
               <div className="wall" style={{ background: 'linear-gradient(180deg, #0f2420, #020605 60%)' }} />
-              <span className="chip-status" style={{ background: ORANGE }}><Icon name="bag" size={14} color="#000" />{fill('{eta} min', state)}</span>
-              <div className="phone-island" style={{ top: 6 }}><Island template={swiggy.template} state={state} expanded={open} onExpandedChange={setOpen} width={377} gap={44} /></div>
+              <span className="chip-status" style={{ background: BLUE }}><Icon name="airplane-tilt" size={14} color="#fff" />{fill('{gate}', state)}</span>
+              <div className="phone-island" style={{ top: 6 }}><Island template={flight.template} state={state} expanded={open} onExpandedChange={setOpen} width={377} gap={44} /></div>
               <div className="lock" style={{ top: 280 }}>
                 <div className="la-card" style={{ borderRadius: 28, background: 'rgba(28,30,30,0.85)' }}>
-                  <div className="la-tag"><Icon name="bag" size={16} color={ORANGE} /><span>Swiggy · Live Update · now</span></div>
+                  <div className="la-tag"><Icon name="airplane-tilt" size={16} color={BLUE} /><span>IndiGo · Live Update · now</span></div>
                   <Node node={card} ctx={ctx} />
                 </div>
               </div>

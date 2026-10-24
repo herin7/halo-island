@@ -151,7 +151,7 @@ export default function App() {
                 <Arrow color={C.bg} />
               </Press>
               <Press style={s.ctaGhost} onPress={() => play(scenarios[0])} haptic="select" label="Play a live activity">
-                <Text style={s.ctaGhostText}>Play Swiggy</Text>
+                <Text style={s.ctaGhostText}>Play IndiGo</Text>
               </Press>
             </View>
             <View style={s.gestures}>
@@ -195,7 +195,7 @@ export default function App() {
 
           {/* Live Activities */}
           <Section kicker="Live Activities" color={C.amber} title="Sixteen islands." serif="All alive.">
-            Delivery, classes, Claude Code limits, a mom's water reminder, a clan raid. Tap one to play its story on the island; start two and the older one becomes a bubble.
+            A flight to boarding, classes, Claude Code limits, a health buddy, a clan raid. Tap one to play its story on the island; start two and the older one becomes a bubble.
           </Section>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabs}>
             {(['All', ...groups] as const).map((g) => (
@@ -211,8 +211,8 @@ export default function App() {
           </View>
 
           {/* Coordination */}
-          <Section kicker="In sync" color="#FC8019" title="One state." serif="Two views.">
-            The card below and the island are the same React state, drawn twice by useIsland. Change it here and the island follows; tap Call on the island and this card answers. They can't disagree.
+          <Section kicker="In sync" color="#5E8BFF" title="One state." serif="Two views.">
+            The card below and the island are the same React state, drawn twice by useIsland. Change it here and the island follows; tap Boarding pass on the island and this card answers. They can't disagree.
           </Section>
           <InSync width={cardW} />
 

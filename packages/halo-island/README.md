@@ -1,18 +1,20 @@
-# Halo Island
+<div align="center">
+  <img src="https://raw.githubusercontent.com/herin7/halo-island/main/packages/halo-island/docs/media/logo.svg" alt="Halo Island logo" width="112"/>
+  <h1>Halo Island</h1>
+  <p><strong>A Dynamic Island for every React Native app: one JSON design, on iOS, Android and the web.</strong></p>
+  <p>
+    <a href="https://www.npmjs.com/package/halo-island"><img src="https://img.shields.io/npm/v/halo-island?style=flat-square&color=5E8BFF" alt="npm"></a>
+    <a href="https://github.com/herin7/halo-island/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/herin7/halo-island/ci.yml?branch=main&style=flat-square&label=ci" alt="CI"></a>
+    <img src="https://img.shields.io/badge/platforms-iOS_·_Android_·_web-000?style=flat-square" alt="Platforms">
+    <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT">
+  </p>
+</div>
 
-**A Dynamic Island for every React Native app: one JSON design, on iOS, Android and the web.**
+<p align="center"><img src="https://raw.githubusercontent.com/herin7/halo-island/main/packages/halo-island/docs/media/hero.png" alt="The IndiGo island" width="100%"/></p>
 
-Live rides, timers, music, payments and tiny in-island apps grow out of the camera cutout, morph with spring physics, and can float over other apps on Android, all from one template.
+Flights, rides, timers, music, payments and tiny in-island apps grow out of the camera cutout, morph with spring physics, and can float over other apps on Android, all from one template.
 
-<p align="center">
-  <img src="docs/media/hero.gif" width="320" alt="A ride island expanding from the camera cutout" />
-  <img src="docs/media/pet.gif" width="320" alt="The pet's eyes following a finger" />
-</p>
-
-| | |
-|---|---|
-| ![Island apps with screens](docs/media/screens.gif) | ![Glass material with an aura](docs/media/glass.gif) |
-| ![Two islands and the bubble](docs/media/multi.gif) | ![The Android island over other apps](docs/media/overlay.gif) |
+<p align="center"><img src="https://raw.githubusercontent.com/herin7/halo-island/main/packages/halo-island/docs/media/gallery-1.png" alt="Live activities" width="100%"/></p>
 
 - **One design, every surface.** The same template runs the in-app island (iOS, Android, web), the Android island over other apps, and the Android notification or Live Update.
 - **Plain data.** A template is JSON, so you can store it, send it from a server, or let an AI agent write it.

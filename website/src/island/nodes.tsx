@@ -205,7 +205,7 @@ export function Roll({ value, style }: { value: string; style: CSSProperties }) 
         <span key={chars.length - i} className="hi-slot" aria-hidden>
           <AnimatePresence mode="popLayout" initial={false} custom={dir.current}>
             <motion.span key={ch} custom={dir.current} variants={rollVariants} initial="enter" animate="center" exit="exit"
-              transition={{ type: 'spring', stiffness: 380, damping: 30 }} style={{ display: 'inline-block', whiteSpace: 'pre' }}>
+              transition={{ type: 'spring', stiffness: 420, damping: 36 }} style={{ display: 'inline-block', whiteSpace: 'pre' }}>
               {ch}
             </motion.span>
           </AnimatePresence>
@@ -214,15 +214,18 @@ export function Roll({ value, style }: { value: string; style: CSSProperties }) 
     </span>
   );
 }
+// A plain slide inside a clipped slot, like the native renderer: no blur or scale, so many timers
+// ticking at once stay cheap and nothing flashes outside its own digit.
 const rollVariants = {
-  enter: (d: number) => ({ y: `${80 * d}%`, opacity: 0, scale: 0.75, filter: 'blur(2px)' }),
-  center: { y: '0%', opacity: 1, scale: 1, filter: 'blur(0px)' },
-  exit: (d: number) => ({ y: `${-80 * d}%`, opacity: 0, scale: 0.75, filter: 'blur(2px)' }),
+  enter: (d: number) => ({ y: `${100 * d}%`, opacity: 0 }),
+  center: { y: '0%', opacity: 1 },
+  exit: (d: number) => ({ y: `${-100 * d}%`, opacity: 0 }),
 };
 
 function Timer({ to, countUp, style }: { to: number; countUp?: boolean; style: CSSProperties }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
+    if (!Number.isFinite(to)) return;
     // Tick on the second boundary of `to`, so every timer on screen flips together and on time.
     let t: ReturnType<typeof setTimeout>;
     const tick = () => {

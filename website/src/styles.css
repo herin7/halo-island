@@ -82,6 +82,8 @@ a { color: inherit; text-decoration: none; }
 .hi-body { flex-shrink: 0; }
 .hi-text { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; }
 .hi-roll { display: inline-flex; white-space: pre; overflow: hidden; line-height: 1.2; flex-shrink: 0; }
+/* Each digit rolls inside its own clipped box; popLayout pins the outgoing digit to this box. */
+.hi-slot { position: relative; display: inline-block; overflow: hidden; }
 .hi-slot { display: inline-grid; overflow: hidden; }
 .hi-slot > * { grid-area: 1 / 1; }
 

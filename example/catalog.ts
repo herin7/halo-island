@@ -67,64 +67,41 @@ const BURST = 'M12 2.5v19M2.5 12h19M5.3 5.3l13.4 13.4M18.7 5.3L5.3 18.7';
 // endregion
 
 export const scenarios: Scenario[] = [
-  // region Daily
+  // region Travel — the lead
   {
-    id: 'swiggy',
-    group: 'Daily',
-    title: 'Swiggy',
-    about: 'Your order, riding home',
-    color: '#FC8019',
-    glyph: 'moped',
+    id: 'indigo',
+    group: 'Travel',
+    title: 'IndiGo',
+    about: 'Gate, boarding time, the flight arc',
+    color: '#5E8BFF',
+    glyph: 'airplane-tilt',
     template: {
-      compact: { leading: glyph('{vehicle}', '#FC8019', 20), trailing: column({ gap: 0 }, when('!delivered', tail('{eta}', 'min', '#FC8019')), when('delivered', glyph('check', '#30D158', 18))) },
-      expanded: column({ gap: 16 },
-        row({ gap: 12 }, label('{status}', '{items}'), when('!delivered', hero('{eta}', 'min', '#FC8019')), when('delivered', glyph('check', '#30D158', 28))),
-        when('!delivered', track('{progress}', 'moped', { end: 'house', markerSize: 16, height: 4, color: '#FC8019', track: FILL })),
-        when('delivered', bar(1, { height: 4, color: '#FC8019' })),
-        when('rider', row({ gap: 10 },
-          wide(button('call', 'Call {rider}', { icon: 'phone', color: '#FC8019', tint: true })),
-          round(button('chat', undefined, { icon: 'chat-circle', color: '#FC8019', tint: true })))),
+      compact: {
+        leading: glyph('airplane-tilt', '#5E8BFF', 18),
+        trailing: row({ gap: 6, align: 'baseline' }, text('{gate}', { size: 15, weight: 'semibold', color: '#5E8BFF' }), timer('{boardAt}', { style: { size: 16, weight: 'semibold' } })),
+      },
+      expanded: column({ gap: 10 },
+        row({ justify: 'between', align: 'end' },
+          column({ gap: 0 }, text('BLR', { size: 26, weight: 'semibold' }), text('Bengaluru', { size: 12, color: GREY })),
+          column({ gap: 0, align: 'center' }, text('6E 2134', { size: 12, color: GREY }), text('Gate {gate}', { size: 15, weight: 'semibold', color: '#5E8BFF' })),
+          column({ gap: 0, align: 'end' }, text('DEL', { size: 26, weight: 'semibold' }), text('New Delhi', { size: 12, color: GREY }))),
+        arc('{progress}', { height: 36, colors: ['#5E8BFF', '#5E8BFF'], thickness: 3, marker: 'airplane-tilt', markerSize: 18 }),
+        row({ justify: 'between', align: 'baseline' },
+          text('{status}', { size: 14, color: GREY }),
+          timer('{boardAt}', { style: { size: 20, weight: 'semibold' } })),
+        // The one action that matters at the gate, only once boarding starts.
+        when('boarding', row({ gap: 10 }, wide(button('pass', 'Boarding pass', { color: '#5E8BFF', textColor: '#FFFFFF' })))),
       ),
-      theme: { accent: '#FC8019' },
+      theme: { accent: '#5E8BFF' },
     },
-    initial: () => ({ status: 'Order confirmed', items: 'Meghana Foods · 2 items', eta: 32, progress: 0.04, vehicle: 'cooking-pot' }),
+    initial: () => ({ gate: 'G24', status: 'Boarding in', boardAt: Date.now() + 38 * MIN, progress: 0.18 }),
     story: [
-      [2400, { status: 'Packing your biryani', eta: 26, progress: 0.18 }],
-      [2600, { status: 'Ravi picked it up', eta: 18, progress: 0.38, rider: 'Ravi', vehicle: 'moped' }, true],
-      [2600, { status: 'Ravi is 2 km away', eta: 9, progress: 0.66 }],
-      [2600, { status: 'Arriving now', eta: 2, progress: 0.92 }],
-      [2600, { status: 'Delivered', items: 'Enjoy your meal', eta: 0, progress: 1, rider: '', vehicle: 'house', delivered: true }, true],
-    ],
-  },
-  {
-    id: 'uber',
-    group: 'Daily',
-    title: 'Uber',
-    about: 'PIN, plate, car closing in',
-    color: '#FFFFFF',
-    glyph: 'car-profile',
-    template: {
-      compact: { leading: glyph('car-profile', '#FFFFFF', 20), trailing: text('{etaLabel}', { size: 16, weight: 'semibold', mono: true }) },
-      expanded: column({ gap: 16 },
-        row({ gap: 12 },
-          label('{status}', '{car} · {plate}'),
-          when('pin', column({ background: FILL, radius: 12, padding: 8, gap: 0, align: 'center', width: 62 },
-            text('PIN', { size: 10, weight: 'semibold', color: GREY }), text('{pin}', { size: 19, weight: 'semibold', mono: true })))),
-        track('{progress}', 'car-profile', { end: 'map-pin', markerSize: 16, height: 4, color: '#FFFFFF', track: FILL }),
-        when('driver', row({ gap: 10 },
-          wide(button('call', 'Call {driver}', { icon: 'phone', color: '#FFFFFF', textColor: '#000000' })),
-          round(button('chat', undefined, { icon: 'chat-circle', color: '#FFFFFF', tint: true })))),
-      ),
-      theme: { accent: '#FFFFFF' },
-    },
-    initial: () => ({ status: 'Finding your ride', car: 'Uber Go', plate: 'Matching drivers', etaLabel: 'Finding', progress: 0 }),
-    story: [
-      [2400, { status: 'Pickup in 6 min', car: 'White Swift Dzire', plate: 'KA 01 AB 1234', driver: 'Asha', pin: '4821', etaLabel: '6 min', progress: 0.2 }, true],
-      [2600, { status: 'Pickup in 3 min', etaLabel: '3 min', progress: 0.58 }],
-      [2600, { status: 'Asha is here', etaLabel: 'Here', progress: 1 }, true],
+      [3000, { gate: 'G27', status: 'Gate changed · boarding in' }, true],
+      [3500, () => ({ status: 'Boarding now', boardAt: Date.now() + MIN, progress: 0.35, boarding: true }), true],
     ],
   },
   // endregion
+
 
   // region EdTech
   {
@@ -202,11 +179,9 @@ export const scenarios: Scenario[] = [
     template: {
       compact: { leading: pet('{mood}', { size: 22 }), trailing: tail('{score}', '/{total}', '#8B7CFF') },
       expanded: column({ gap: 14 },
-        row({ gap: 12, align: 'start' },
-          column({ gap: 4, grow: true },
-            text('Biology · {q} of {total}', { size: 13, weight: 'semibold', color: '#8B7CFF' }),
-            text('{question}', { size: 18, weight: 'semibold', lines: 2 })),
-          pet('{mood}', { size: 40 })),
+        column({ gap: 4 },
+          text('Biology · {q} of {total}', { size: 13, weight: 'semibold', color: '#8B7CFF' }),
+          text('{question}', { size: 18, weight: 'semibold', lines: 2 })),
         chips('answer', ['{a}', '{b}', '{c}'], { values: ['a', 'b', 'c'], color: '#8B7CFF' }),
         when('verdict', text('{verdict}', { size: 14, weight: 'semibold', color: '{verdictColor}' })),
         row({ gap: 10 }, wide(button('check', '{cta}', { color: '#8B7CFF', textColor: '#FFFFFF' }))),
@@ -302,10 +277,10 @@ export const scenarios: Scenario[] = [
 
   // region Health & focus
   {
-    id: 'mumma',
+    id: 'buddy',
     group: 'Health',
-    title: 'Mumma',
-    about: 'Water and meals, from mom',
+    title: 'Health Buddy',
+    about: 'Water and meals, gently nudged',
     color: '#64D2FF',
     glyph: 'drop',
     template: {
@@ -320,14 +295,14 @@ export const scenarios: Scenario[] = [
       ),
       theme: { accent: '#64D2FF' },
     },
-    initial: () => ({ line: 'Paani pi lo, beta', glasses: 3, water: 3 / 8, meals: 1, meal: 'lunch' }),
+    initial: () => ({ line: 'Time for some water', glasses: 3, water: 3 / 8, meals: 1, meal: 'lunch' }),
     story: [
-      [3500, { line: 'Lunch time. Khana kha liya?' }, true],
+      [3500, { line: 'Lunch time. Eaten yet?' }, true],
     ],
     handle: (action, s) => {
       if (action === 'glass') {
         const glasses = Math.min(8, Number(s.glasses) + 1);
-        return { glasses, water: glasses / 8, line: glasses === 8 ? 'All 8. Shabaash!' : glasses >= 6 ? 'Almost there, beta' : 'Good. One more soon' };
+        return { glasses, water: glasses / 8, line: glasses === 8 ? 'All 8. Nice work' : glasses >= 6 ? 'Almost there' : 'Good. One more soon' };
       }
       if (action === 'ate') {
         const meals = Math.min(4, Number(s.meals) + 1);
@@ -366,11 +341,9 @@ export const scenarios: Scenario[] = [
     template: {
       compact: { leading: pet('{mood}', { size: 22 }), trailing: timer('{endsAt}', { style: { size: 16, weight: 'semibold', color: '#FF9F0A' } }) },
       expanded: column({ gap: 16 },
-        row({ gap: 14 },
-          pet('{mood}', { size: 44 }),
-          column({ gap: 0, grow: true },
-            text('{phase} · {round} of 4', { size: 13, color: GREY }),
-            timer('{endsAt}', { style: { size: 40, weight: 'semibold', color: '#FF9F0A' } }))),
+        column({ gap: 0 },
+          text('{phase} · {round} of 4', { size: 13, color: GREY }),
+          timer('{endsAt}', { style: { size: 40, weight: 'semibold', color: '#FF9F0A' } })),
         row({ gap: 10 },
           wide(button('skip', 'Skip', { color: '#FFFFFF', tint: true })),
           wide(button('stop', 'End', { color: '#FF9F0A', tint: true, confirm: 'End session?' }))),
@@ -382,6 +355,65 @@ export const scenarios: Scenario[] = [
     handle: (action, s) => (action === 'skip'
       ? (s.phase === 'Deep work' ? { phase: 'Break', mood: 'sleepy', endsAt: Date.now() + 5 * MIN } : { phase: 'Deep work', mood: 'focused', round: Number(s.round) + 1, endsAt: Date.now() + 25 * MIN })
       : undefined),
+  },
+  // endregion
+
+  // region Daily
+  {
+    id: 'swiggy',
+    group: 'Daily',
+    title: 'Swiggy',
+    about: 'Your order, riding home',
+    color: '#FC8019',
+    glyph: 'moped',
+    template: {
+      compact: { leading: glyph('{vehicle}', '#FC8019', 20), trailing: column({ gap: 0 }, when('!delivered', tail('{eta}', 'min', '#FC8019')), when('delivered', glyph('check', '#30D158', 18))) },
+      expanded: column({ gap: 16 },
+        row({ gap: 12 }, label('{status}', '{items}'), when('!delivered', hero('{eta}', 'min', '#FC8019')), when('delivered', glyph('check', '#30D158', 28))),
+        when('!delivered', track('{progress}', 'moped', { end: 'house', markerSize: 16, height: 4, color: '#FC8019', track: FILL })),
+        when('delivered', bar(1, { height: 4, color: '#FC8019' })),
+        when('rider', row({ gap: 10 },
+          wide(button('call', 'Call {rider}', { icon: 'phone', color: '#FC8019', tint: true })),
+          round(button('chat', undefined, { icon: 'chat-circle', color: '#FC8019', tint: true })))),
+      ),
+      theme: { accent: '#FC8019' },
+    },
+    initial: () => ({ status: 'Order confirmed', items: 'Meghana Foods · 2 items', eta: 32, progress: 0.04, vehicle: 'cooking-pot' }),
+    story: [
+      [2400, { status: 'Packing your biryani', eta: 26, progress: 0.18 }],
+      [2600, { status: 'Ravi picked it up', eta: 18, progress: 0.38, rider: 'Ravi', vehicle: 'moped' }, true],
+      [2600, { status: 'Ravi is 2 km away', eta: 9, progress: 0.66 }],
+      [2600, { status: 'Arriving now', eta: 2, progress: 0.92 }],
+      [2600, { status: 'Delivered', items: 'Enjoy your meal', eta: 0, progress: 1, rider: '', vehicle: 'house', delivered: true }, true],
+    ],
+  },
+  {
+    id: 'uber',
+    group: 'Daily',
+    title: 'Uber',
+    about: 'PIN, plate, car closing in',
+    color: '#FFFFFF',
+    glyph: 'car-profile',
+    template: {
+      compact: { leading: glyph('car-profile', '#FFFFFF', 20), trailing: text('{etaLabel}', { size: 16, weight: 'semibold', mono: true }) },
+      expanded: column({ gap: 16 },
+        row({ gap: 12 },
+          label('{status}', '{car} · {plate}'),
+          when('pin', column({ background: FILL, radius: 12, padding: 8, gap: 0, align: 'center', width: 62 },
+            text('PIN', { size: 10, weight: 'semibold', color: GREY }), text('{pin}', { size: 19, weight: 'semibold', mono: true })))),
+        track('{progress}', 'car-profile', { end: 'map-pin', markerSize: 16, height: 4, color: '#FFFFFF', track: FILL }),
+        when('driver', row({ gap: 10 },
+          wide(button('call', 'Call {driver}', { icon: 'phone', color: '#FFFFFF', textColor: '#000000' })),
+          round(button('chat', undefined, { icon: 'chat-circle', color: '#FFFFFF', tint: true })))),
+      ),
+      theme: { accent: '#FFFFFF' },
+    },
+    initial: () => ({ status: 'Finding your ride', car: 'Uber Go', plate: 'Matching drivers', etaLabel: 'Finding', progress: 0 }),
+    story: [
+      [2400, { status: 'Pickup in 6 min', car: 'White Swift Dzire', plate: 'KA 01 AB 1234', driver: 'Asha', pin: '4821', etaLabel: '6 min', progress: 0.2 }, true],
+      [2600, { status: 'Pickup in 3 min', etaLabel: '3 min', progress: 0.58 }],
+      [2600, { status: 'Asha is here', etaLabel: 'Here', progress: 1 }, true],
+    ],
   },
   // endregion
 
@@ -401,7 +433,7 @@ export const scenarios: Scenario[] = [
       expanded: column({ gap: 14 },
         row({ gap: 12 },
           column({ gap: 1, grow: true },
-            row({ gap: 6 }, column({ width: 6, height: 6, radius: 3, background: '#FF453A' }), text('MI vs CSK · {overs} ov', { size: 13, color: GREY })),
+            text('vs CSK · {overs} ov', { size: 13, color: GREY }),
             text('{batter}', { size: 16, weight: 'semibold', lines: 1 })),
           stack(column({ align: 'end', gap: 0 }, hero('{runs}/{wkts}', '', '#FFFFFF', 30), text('CRR {crr}', { size: 12, color: GREY })), when('six', lottie('lottie:confetti', { size: 90, loop: false })))),
         bars('{perOver}', { active: '{over}', color: '#0A84FF', track: FILL, height: 32, gap: 4 }),
@@ -429,7 +461,6 @@ export const scenarios: Scenario[] = [
       },
       expanded: column({ gap: 14 },
         row({ gap: 12 },
-          image('https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&q=70', { size: 52, radius: 12 }),
           label('{title}', '{artist}'),
           svg(brand.spotify, { size: 20, color: '#1DB954' })),
         bar('{progress}', { color: '#FFFFFF', track: '#3A3A3C', height: 4 }),
@@ -445,36 +476,6 @@ export const scenarios: Scenario[] = [
     handle: (action, s) => (action === 'toggle' ? { playIcon: s.playIcon === 'pause' ? 'play' : 'pause' }
       : action === 'next' ? { title: 'Apna Bana Le', artist: 'Arijit Singh', progress: 0 }
         : action === 'previous' ? { title: 'Kesariya', artist: 'Arijit Singh', progress: 0 } : undefined),
-  },
-  {
-    id: 'indigo',
-    group: 'Travel',
-    title: 'IndiGo',
-    about: 'Gate, boarding time, the flight arc',
-    color: '#5E8BFF',
-    glyph: 'airplane-tilt',
-    template: {
-      compact: {
-        leading: glyph('airplane-tilt', '#5E8BFF', 18),
-        trailing: row({ gap: 6, align: 'baseline' }, text('{gate}', { size: 15, weight: 'semibold', color: '#5E8BFF' }), timer('{boardAt}', { style: { size: 16, weight: 'semibold' } })),
-      },
-      expanded: column({ gap: 10 },
-        row({ justify: 'between', align: 'end' },
-          column({ gap: 0 }, text('BLR', { size: 26, weight: 'semibold' }), text('Bengaluru', { size: 12, color: GREY })),
-          column({ gap: 0, align: 'center' }, text('6E 2134', { size: 12, color: GREY }), text('Gate {gate}', { size: 15, weight: 'semibold', color: '#5E8BFF' })),
-          column({ gap: 0, align: 'end' }, text('DEL', { size: 26, weight: 'semibold' }), text('New Delhi', { size: 12, color: GREY }))),
-        arc('{progress}', { height: 36, colors: ['#5E8BFF', '#5E8BFF'], thickness: 3, marker: 'airplane-tilt', markerSize: 18 }),
-        row({ justify: 'between', align: 'baseline' },
-          text('{status}', { size: 14, color: GREY }),
-          timer('{boardAt}', { style: { size: 20, weight: 'semibold' } })),
-      ),
-      theme: { accent: '#5E8BFF' },
-    },
-    initial: () => ({ gate: 'G24', status: 'Boarding in', boardAt: Date.now() + 38 * MIN, progress: 0.18 }),
-    story: [
-      [3000, { gate: 'G27', status: 'Gate changed · boarding in' }, true],
-      [3500, () => ({ status: 'Boarding now', boardAt: Date.now() + MIN, progress: 0.35 }), true],
-    ],
   },
   {
     id: 'gold',
@@ -569,4 +570,4 @@ const QUIZ = [
   { question: 'Photosynthesis happens in…', a: 'Chloroplasts', b: 'Vacuoles', c: 'Lysosomes', right: 'a' },
 ];
 
-export const groups: Group[] = ['Daily', 'EdTech', 'Work', 'Health', 'Focus', 'Money', 'Sport', 'Travel', 'Games'];
+export const groups: Group[] = ['Travel', 'EdTech', 'Work', 'Health', 'Focus', 'Daily', 'Money', 'Sport', 'Games'];

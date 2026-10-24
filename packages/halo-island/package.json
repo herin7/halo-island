@@ -21,12 +21,14 @@
     "expo-haptics": "*",
     "expo-blur": "*",
     "expo-glass-effect": "*",
-    "lottie-react-native": "*"
+    "lottie-react-native": "*",
+    "rive-react-native": "*"
   },
   "peerDependenciesMeta": {
     "expo-haptics": { "optional": true },
     "expo-blur": { "optional": true },
     "expo-glass-effect": { "optional": true },
-    "lottie-react-native": { "optional": true }
+    "lottie-react-native": { "optional": true },
+    "rive-react-native": { "optional": true }
   }
 }

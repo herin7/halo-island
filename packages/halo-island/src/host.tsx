@@ -600,28 +600,34 @@ function Rolling({ value, style }: { value: string; style: RNTextStyle }) {
 }
 
 function Digit({ char, up, style }: { char: string; up: boolean; style: RNTextStyle[] }) {
-  const reduced = useReducedMotion();
   const size = StyleSheet.flatten(style)?.fontSize ?? 14;
   const h = Math.round(size * 1.22);
-  const [pair, setPair] = useState({ prev: char, cur: char, up });
-  const t = useSharedValue(1);
-  useEffect(() => {
-    if (char === pair.cur) return;
-    setPair({ prev: pair.cur, cur: char, up });
-    t.value = 0;
-    t.value = reduced ? 1 : withSpring(1, { duration: 340, dampingRatio: 0.86 });
-  }, [char]);
-  // Growing numbers roll up (new digit from below), shrinking ones roll down.
-  const d = pair.up ? 1 : -1;
-  const incoming = useAnimatedStyle(() => ({ opacity: t.value, transform: [{ translateY: (1 - t.value) * h * 0.8 * d }, { scale: 0.75 + t.value * 0.25 }] }));
-  const outgoing = useAnimatedStyle(() => ({ opacity: 1 - t.value, transform: [{ translateY: -t.value * h * 0.8 * d }, { scale: 1 - t.value * 0.25 }] }));
+  const [pair, setPair] = useState({ prev: char, cur: char, up, n: 0 });
+  // Derived during render, so the new digit never paints before its roll starts.
+  if (char !== pair.cur) setPair({ prev: pair.cur, cur: char, up, n: pair.n + 1 });
   const text = [...style, { lineHeight: h }];
   if (!/[0-9]/.test(char) && !/[0-9]/.test(pair.prev)) return <Text style={text} maxFontSizeMultiplier={1.3}>{char}</Text>;
   return (
     <View style={{ height: h, overflow: 'hidden' }}>
-      {pair.prev !== pair.cur ? <Animated.Text style={[text, styles.ghost, outgoing]} maxFontSizeMultiplier={1.3}>{pair.prev}</Animated.Text> : null}
-      <Animated.Text style={[text, incoming]} maxFontSizeMultiplier={1.3}>{pair.cur}</Animated.Text>
+      <Roll key={pair.n} prev={pair.prev} cur={pair.cur} up={pair.up} animate={pair.n > 0} h={h} text={text} />
     </View>
+  );
+}
+
+/** One change of one digit. Mounted per change, so its progress starts at 0 on the first frame. */
+function Roll({ prev, cur, up, animate, h, text }: { prev: string; cur: string; up: boolean; animate: boolean; h: number; text: RNTextStyle[] }) {
+  const reduced = useReducedMotion();
+  const t = useSharedValue(animate && !reduced ? 0 : 1);
+  useEffect(() => { if (t.value < 1) t.value = withSpring(1, { duration: 340, dampingRatio: 0.9 }); }, []);
+  // Growing numbers roll up (new digit from below), shrinking ones roll down.
+  const d = up ? 1 : -1;
+  const incoming = useAnimatedStyle(() => ({ opacity: t.value, transform: [{ translateY: (1 - t.value) * h * d }] }));
+  const outgoing = useAnimatedStyle(() => ({ opacity: 1 - t.value, transform: [{ translateY: -t.value * h * d }] }));
+  return (
+    <>
+      {prev !== cur ? <Animated.Text style={[text, styles.ghost, outgoing]} maxFontSizeMultiplier={1.3}>{prev}</Animated.Text> : null}
+      <Animated.Text style={[text, incoming]} maxFontSizeMultiplier={1.3}>{cur}</Animated.Text>
+    </>
   );
 }
 
