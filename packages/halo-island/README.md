@@ -69,6 +69,29 @@ useIslandAction('cancel', (islandId, state) => cancelRide());
 
 For a toast that stays in the app and ends on its own, use `island(presets.toast).show({ title: 'Saved', message: 'Done', icon: 'check' })`.
 
+## Keep the island and the screen in sync
+
+`useIsland` makes the island a view of your React state. It starts when `state` becomes non-null, sends only the keys that differ from what the island shows (removed keys are cleared), and ends on `null` or unmount. The island can't drift from your screen: if anything else changed it, the next render corrects it.
+
+```tsx
+import { useIsland } from 'halo-island';
+
+const order = { compact: { … }, expanded: … }; // define templates outside components
+
+function OrderScreen({ order: o }) {
+  const [tracking, setTracking] = useState(true);
+  useIsland(orderTemplate, tracking ? { status: o.status, eta: o.eta, rider: o.rider } : null, {
+    id: `order-${o.id}`,
+    alertOn: ['rider'],                      // pop open when a rider is assigned
+    onAction: (action) => action === 'call' && call(o.rider),
+    onChange: (patch) => setTip(patch.tip),  // chips/sliders write back to your state
+  });
+  return <OrderCard order={o} />;
+}
+```
+
+Starting with an id that's already showing replaces that island in place (same position, no re-entry animation), and handles from the old one keep working on the new one.
+
 Built-in presets: `ride`, `timer`, `media`, `goal`, `progress`, `call`, `score` and `toast`. Each one lists the state keys it reads. To change a preset, spread it: `island({ ...presets.timer, theme: { accent: '#f0f' } })`.
 
 ## Design your own
@@ -94,6 +117,15 @@ const order = island({
 ```
 
 Compact is `leading · (camera) · trailing`. When the island expands, that same row becomes the header and `expanded` goes below it. iOS uses this layout, and Halo Island uses it on every surface.
+
+### Design like the system island
+
+The templates that look native follow Apple's Live Activity anatomy:
+
+- **Compact** is one glyph on the left and one value on the right (`12 min`, `62%`, a timer). No titles.
+- **Expanded** keeps that glyph as its header. Under it: a title and a muted line on the left, the key value large on the right, then at most one visual (a bar, a track, a sparkline) and one row of buttons.
+- Use the accent for the value and the main button, white for titles, the theme's secondary grey for everything else. Semibold, not heavy.
+- Add a character or an animation only when it carries meaning: a pet that reacts to answers, confetti on a six.
 
 `show` renders a node only while a state key is set, so the island grows as details arrive. A `!` in front inverts it:
 
@@ -138,6 +170,23 @@ useIslandAction('change:lights', (id, state) => api.lights(state.lights));
 - `button(action, label, { confirm: 'Pay ₹200?' })` turns into its own confirmation on the first tap and fires on the second. Use it for anything that costs money or can't be undone.
 - `shape: 'tile'` stacks the icon over the label, like a control-center tile. `shape: 'circle'` is a round, icon-only button.
 - `screens` stay inside the app. They're removed before a template goes to a system surface, which keeps those payloads small.
+
+## Icons, images and animations
+
+The built-in icons cover common cases. Register your own glyph set once and use the names anywhere an icon goes: `icon`, button `icon`, `track` and `arc` markers, tiles.
+
+```ts
+import { registerIcons, registerAssets } from 'halo-island';
+
+registerIcons({ moped: 'M…', 'cooking-pot': 'M…' });  // path data on a 24-unit grid
+registerAssets({
+  logo: require('./assets/logo.png'),                  // image('logo')
+  'lottie:confetti': require('./assets/confetti.json'), // lottie('lottie:confetti')
+  'rive:car': require('./assets/car.riv'),              // rive('rive:car')
+});
+```
+
+Templates stay plain JSON (names, not `require` calls), and the example app ships [Phosphor](https://phosphoricons.com) fill glyphs (MIT) rescaled to that grid. Registered icons draw in the in-app renderer; the Android overlay knows the built-ins and Android drawable names.
 
 ## The pet
 
@@ -187,11 +236,11 @@ Every `start()` is its own island. The newest one owns the island, and the one b
 | `image` | `image(uri, opts?)` | `uri` (http, file or `asset(require(...))`), `size`, `width`, `radius`, `fit`, `glow` |
 | `ring` | `ring(value, opts?)` | `value` 0–1, `size`, `thickness`, `color`, `track` |
 | `bar` | `bar(value, opts?)` | `value` 0–1, `height`, `color`, `track` |
-| `track` | `track(value, marker?, opts?)` | a bar with a marker (emoji or text) riding along it |
+| `track` | `track(value, marker?, opts?)` | a bar with a marker riding along it: an icon name (drawn on a puck) or a registered image/Lottie; `end` icon at the finish, `flip`, `markerSize`, `height`, `color`, `track` |
 | `steps` | `steps(value, count, opts?)` | `count` segments, `value` done (fractions fill part of one) |
 | `bars` | `bars(values, opts?)` | values 0–1 as an array or `'{list}'`, `active`, `gap`, `animate` (live waveform) |
 | `line` | `line(values, opts?)` | sparkline, values 0–1, `height`, `color`, `fill`, `thickness` |
-| `arc` | `arc(value, opts?)` | shallow arc with a glowing marker, `colors`, `thickness`, `glow` |
+| `arc` | `arc(value, opts?)` | shallow arc, `colors`, `thickness`, `glow`; `marker` rides the curve and turns with it |
 | `timeline` | `timeline(value, icons, opts?)` | stages as icons on a line, `value` counts reached stages |
 | `timer` | `timer(to, opts?)` | counts down to (or `countUp` from) epoch ms, ticking on its own with no updates |
 | `button` | `button(action, label?, opts?)` | `icon`, `color`, `textColor`, `tint`, `confirm`, `shape: pill\|tile\|circle` |
@@ -199,13 +248,14 @@ Every `start()` is its own island. The newest one owns the island, and the one b
 | `slider` | `slider(bind, opts?)` | drag to set `state[bind]` between 0 and 1, `icon`, `color`, `track`, `height` |
 | `toggle` | `toggle(bind, label, opts?)` | a tile that flips `state[bind]`, `icon`, `color` |
 | `pet` | `pet(mood?, opts?)` | `mood` (or `'{mood}'`), `size`, `color`, `cheeks` |
-| `lottie` | `lottie(uri, opts?)` | needs `lottie-react-native`, `size`, `loop` |
-| `rive` | `rive(uri, opts?)` | `.riv` file, `artboard`, `stateMachine`, `trigger` (fires when its value changes) |
+| `lottie` | `lottie(uri, opts?)` | needs `lottie-react-native`, `size`, `width`, `loop`, `speed` |
+| `rive` | `rive(uri, opts?)` | `.riv` file, `artboard`, `stateMachine`, `trigger` (fires when its value changes), `inputs` |
+| `stack` | `stack(style?, ...children)` | layers children: the first sets the size, the rest center on it (a value inside a ring) |
 | `spacer` | `spacer(size?)` | a fixed gap, or leave out `size` to fill the space |
 
 Any node can also take `effect: 'pulse'|'bounce'|'spin'|'wiggle'|'shimmer'` (`fx(node, 'pulse')`) and `show: 'key'|'!key'` (`when('key', node)`).
 
-Built-in icons: `apps back bag bell bolt bulb car chat check close coffee download eye fire flight forward headphones heart home like location lock map mic minus moon music navigate next pause phone play plus previous refresh rupee send share shield sparkle star stop sun thermo timer trend tune volume walk`. Any SVG path works too, and Android drawable names work on Android surfaces.
+Built-in icons (add more with `registerIcons`): `apps back bag bell bolt bulb car chat check close coffee download eye fire flight forward headphones heart home like location lock map mic minus moon music navigate next pause phone play plus previous refresh rupee send share shield sparkle star stop sun thermo timer trend tune volume walk`. Any SVG path works too, and Android drawable names work on Android surfaces.
 
 Helpers: `fill(str, state)`, `num(value, state)`, `nums(values, state)`, `on(value)` and `visible(node, state)`. These are the same rules the renderers use.
 
@@ -230,7 +280,7 @@ onAction((islandId, action, state) => log(action));  // every action
 
 ```ts
 theme: {
-  background: '#000', foreground: '#F7F7F2', secondary: '#9AA09A', accent: '#5FCB9C',
+  background: '#000', foreground: '#FFFFFF', secondary: '#98989F', accent: '#5FCB9C',
   border: '',            // empty: the key line takes the accent
   radius: 40,            // expanded corner radius; compact is always a pill
   glow: '#5FCB9C',       // the border breathes in this color
@@ -258,6 +308,7 @@ Missing font weights fall back to the nearest one that's set. To set base defaul
 | `motion` | | Overrides every template's motion |
 | `haptics` | `true` | Uses `expo-haptics` when installed |
 | `dim` | `true` | Dims the app behind the expanded island. Tapping outside collapses it |
+| `blurTarget` | | Android glass: a ref to the `BlurTargetView` (expo-blur) wrapping your screen, so the island blurs what's under it |
 
 `<IslandPreview>` renders a template statically, for galleries and design tools.
 
@@ -327,6 +378,8 @@ The in-app island needs no plugin.
 - Start from the closest preset, then change text, colors and icons. Keep state flat (`{ eta: '4 min' }`) and send only what changed.
 - Use `{key}` placeholders for anything that changes. Use `when()` for details that arrive later.
 - Actions are strings. Handle them with `useIslandAction(name, (id, state) => …)`.
+- When the island mirrors screen state, use `useIsland(template, state | null, { id })` instead of start/update by hand.
+- Compact: one glyph, one value. Expanded: title + muted line, value large on the right, one visual, one button row.
 - Put `confirm` on anything destructive or paid.
 - Stay under 4KB for system surfaces. Inputs and `screens` stay in-app.
 

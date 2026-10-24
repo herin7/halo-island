@@ -20,6 +20,7 @@ live.update({ eta: '2 min', progress: 0.7 });
 | [`packages/halo-island`](packages/halo-island) | The library: [README](packages/halo-island/README.md), [llms.txt](packages/halo-island/llms.txt) for AI agents |
 | [`example`](example) | The showcase app (Expo). Run it with `cd example && bunx expo run:android` or `run:ios` |
 | [`website`](website) | The docs site, with a live in-browser island |
+| [`tools/island-bridge`](tools/island-bridge) | Your real Claude Code limits and permission prompts on the island ([setup](tools/island-bridge/README.md)) |
 
 ## Develop
 

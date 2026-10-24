@@ -13,12 +13,14 @@
 - t.show(state)  // in-app toast, ends after 3s
 - live.update(patch, { alert })  // merge; send only changed keys; alert pops it open
 - live.end(); endAll(); live.on(action, (state) => {})
+- useIsland(template, state | null, { id, alertOn: ['key'], onAction, onChange })  // island = view of React state; diffs, starts on non-null, ends on null/unmount. Prefer this when the screen shows the same data.
 - useIslandAction(action, (islandId, state) => {})  // taps from every surface, even app killed
 - onAction((islandId, action, state) => {})
 - setState(id, patch)  // what inputs do; focus(id) brings an island to the front
 - lookAt(x, y, { width, height })  // point every pet at a screen position
 - capabilities() -> { liveActivities, liveUpdates, notifications, overlay }; openLiveUpdateSettings()
 - asset(require('./x.png')) -> uri for image/rive
+- registerIcons({ name: pathData24 }) adds icon names; registerAssets({ logo: require(..), 'lottie:x': require(..), 'rive:y': require(..) }) lets templates use names
 - presets: ride timer media goal progress call score toast
 
 ## Template (plain JSON, all fields optional except compact)
@@ -33,14 +35,15 @@ text(value, { size weight(regular|medium|semibold|bold|heavy) color mono font li
 icon(name, { size color }) | svg(pathData, { size width color viewBox stroke })
 image(uri, { size width radius fit(cover|contain) glow })
 ring(value0to1, { size thickness color track })
-bar(value, { height color track }) | track(value, marker?, opts) | steps(value, count, opts)
+bar(value, { height color track }) | track(value, markerIconOrAsset?, { end flip markerSize height color track }) | steps(value, count, opts)
+stack(style?, ...kids)  first child sizes, rest centered on it (value inside a ring)
 bars(values, { active height gap color track animate }) | line(values, { height color fill thickness })
-arc(value, { height thickness colors[] track glow }) | timeline(value, icons[], { size color track ink })
+arc(value, { height thickness colors[] track glow marker markerSize }) | timeline(value, icons[], { size color track ink })
 timer(toEpochMs, { countUp style })
 button(action, label?, { icon color textColor tint confirm shape(pill|tile|circle) })
 chips(bind, options[], { values[] color }) | slider(bind, { icon color track height }) | toggle(bind, label, { icon color })
 pet(mood?, { size color cheeks })  moods: idle happy love sleepy surprised thinking wink sad focused
-lottie(uri, { size loop }) | rive(uri, { size width artboard stateMachine trigger }) | spacer(size?)
+lottie(uri, { size width loop speed }) | rive(uri, { size width artboard stateMachine trigger inputs }) | spacer(size?)
 fx(node, 'pulse'|'bounce'|'spin'|'wiggle'|'shimmer') | when('key' | '!key', node)
 
 ## Actions
@@ -65,6 +68,7 @@ Off: '' 0 false null undefined 'false' '0'. Everything else is on. '!key' invert
 - Template + state <= 4KB (screens are stripped before native).
 
 ## Rules of thumb
+- Native look: compact = one glyph + one value. Expanded = title + grey line left, big value right, one visual, one button row. Semibold, accent only on the value and main button.
 - Start from a preset; keep state flat; update only changed keys.
 - Use when() for details that arrive later; '!key' for the "until then" state.
 - Put confirm on paid or destructive buttons.
