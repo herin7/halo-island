@@ -57,7 +57,7 @@ export interface LiveIsland {
   update(patch: IslandState, options?: { alert?: boolean }): void;
   end(): void;
   /** Subscribe to a button action of this island. Returns an unsubscribe function. */
-  on(action: string, handler: () => void): () => void;
+  on(action: string, handler: (state: IslandState) => void): () => void;
 }
 
 export interface Active {
@@ -69,19 +69,21 @@ export interface Active {
   key: number;
   /** Bumped on each alerting update. */
   alert: number;
+  /** Mirrored to a system surface (Live Activity, notification or overlay). */
+  system: boolean;
 }
 
 // region Store
 
 const islands = new Map<string, Active>();
 const subscribers = new Set<() => void>();
-let snapshot: Active | null = null;
+/** In-app islands, oldest first; the last one owns the island, the one before it gets the bubble. */
+let snapshot: Active[] = [];
 let counter = 0;
 
 function changed() {
-  const top = [...islands.values()].reverse().find(showsInApp);
-  // A fresh object each time, so useSyncExternalStore sees state updates.
-  snapshot = top ? { ...top } : null;
+  // Fresh objects each time, so useSyncExternalStore sees state updates.
+  snapshot = [...islands.values()].filter(showsInApp).map((a) => ({ ...a }));
   subscribers.forEach((fn) => fn());
 }
 
@@ -96,18 +98,38 @@ export const store = {
     subscribers.add(fn);
     return () => void subscribers.delete(fn);
   },
-  current: () => snapshot,
+  all: () => snapshot,
 };
+
+/** Moves an island to the front: it takes the island, the previous one becomes the bubble. */
+export function focus(id: string) {
+  const entry = islands.get(id);
+  if (!entry || [...islands.keys()].pop() === id) return;
+  islands.delete(id);
+  islands.set(id, entry);
+  changed();
+}
+
+/** Writes in-island input (chips, sliders, toggles) into an island's state, on every surface. */
+export function setState(id: string, patch: IslandState) {
+  const entry = islands.get(id);
+  if (!entry) return;
+  entry.state = { ...entry.state, ...patch };
+  if (native && entry.system) native.update(id, JSON.stringify(entry.state), false);
+  changed();
+}
 
 // endregion
 
 // region Actions
 
-type ActionHandler = (id: string, action: string) => void;
+/** `state` is the island's state at the time of the tap — what the chips and sliders were set to. */
+type ActionHandler = (id: string, action: string, state: IslandState) => void;
 const actionHandlers = new Set<ActionHandler>();
 
 export function emitAction(id: string, action: string) {
-  actionHandlers.forEach((fn) => fn(id, action));
+  const state = islands.get(id)?.state ?? {};
+  actionHandlers.forEach((fn) => fn(id, action, state));
 }
 
 /** Every button tap from every surface. Returns an unsubscribe function. */
@@ -133,6 +155,8 @@ if (Platform.OS === 'android') {
 const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secondary', 'accent', 'border', 'textColor', 'glow', 'ink']);
 
 export const MOTION = {
+  /** The default: a touch of overshoot, like the system island. */
+  island: { stiffness: 340, damping: 30 },
   bouncy: { stiffness: 380, damping: 28 },
   snappy: { stiffness: 700, damping: 45 },
   smooth: { stiffness: 260, damping: 32 },
@@ -141,8 +165,7 @@ export const MOTION = {
 export function springOf(motion: Motion | undefined) {
   if (motion === 'none') return null;
   if (typeof motion === 'object') return motion;
-  // Default: critically damped, so open and close settle without overshoot.
-  return MOTION[motion ?? 'smooth'];
+  return MOTION[motion ?? 'island'];
 }
 
 export function hex(color: string): string {
@@ -166,7 +189,9 @@ export const nativeJson = (value: unknown) => JSON.stringify(normalize(value));
 export function toNative(template: IslandTemplate) {
   const spring = springOf(template.motion);
   const theme = resolveTheme(template.theme, Appearance.getColorScheme());
-  return JSON.stringify({ ...(normalize({ ...template, theme }) as object), motion: spring ?? 'none' });
+  // Screens are in-app flows; system surfaces show the main layout and stay under the 4KB cap.
+  const { screens: _, ...rest } = template;
+  return JSON.stringify({ ...(normalize({ ...rest, theme }) as object), motion: spring ?? 'none' });
 }
 
 // endregion
@@ -174,12 +199,12 @@ export function toNative(template: IslandTemplate) {
 /** Starts an island on every surface the device supports. */
 export function start(template: IslandTemplate, state: IslandState = {}, options: StartOptions = {}): LiveIsland {
   const id = options.id ?? `island-${Date.now().toString(36)}-${(counter++).toString(36)}`;
-  const entry: Active = { id, template, state: { ...state }, options, key: counter++, alert: 0 };
+  const system = options.system !== false && options.duration == null;
+  const entry: Active = { id, template, state: { ...state }, options, key: counter++, alert: 0, system: system || !!options.overlay };
   islands.delete(id);
   islands.set(id, entry);
 
-  const system = options.system !== false && options.duration == null;
-  if (native && (system || options.overlay)) {
+  if (native && entry.system) {
     const json = toNative(template);
     if (__DEV__ && json.length + payloadSize(state) > 4096) {
       console.warn(`[halo-island] "${id}" is over 4KB; iOS will refuse to start it. Trim the template or state.`);
@@ -195,7 +220,7 @@ export function start(template: IslandTemplate, state: IslandState = {}, options
       if (!islands.has(id)) return;
       entry.state = { ...entry.state, ...patch };
       if (opts?.alert) entry.alert++;
-      if (native && (system || options.overlay)) native.update(id, JSON.stringify(entry.state), !!opts?.alert);
+      if (native && entry.system) native.update(id, JSON.stringify(entry.state), !!opts?.alert);
       changed();
     },
     end() {
@@ -204,7 +229,7 @@ export function start(template: IslandTemplate, state: IslandState = {}, options
       changed();
     },
     on(action, handler) {
-      return onAction((from, a) => from === id && a === action && handler());
+      return onAction((from, a, s) => from === id && a === action && handler(s));
     },
   };
   if (options.duration != null) setTimeout(() => live.end(), options.duration);

@@ -128,6 +128,7 @@ internal class OverlayIsland(private val context: Context) {
     val container = root ?: return
     val theme = Theme(current.template.optJSONObject("theme"))
     val renderer = Renderer(context, theme, current.state, values) { action ->
+      if (action == "close") return@Renderer setExpanded(false)
       HaloIslandModule.dispatch(context, current.id, action)
       scheduleAutoCollapse()
     }
@@ -147,13 +148,14 @@ internal class OverlayIsland(private val context: Context) {
       val column = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(10), dp(10), dp(10), dp(24))
-        addView(compactRow(renderer, current, "h"), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, compactHeight))
+        addView(compactRow(renderer, current, "h", header = true), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, compactHeight))
         addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
           setMargins(dp(14), dp(10), dp(14), 0)
         })
       }
       expandedHost.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
     }
+    expandedHost.background = theme.aura.takeIf { android.graphics.Color.alpha(it) > 0 }?.let { aura(it) }
     container.contentDescription = describe(current)
     syncGlow(current)
     resize()
@@ -168,6 +170,21 @@ internal class OverlayIsland(private val context: Context) {
     drawable.cornerRadius = radius
     drawable.setStroke(dp(1), theme.border)
     return drawable
+  }
+
+  /** theme.aura: a soft wash rising from the bottom edge, brightest under the middle. Clipped by the island's outline. */
+  private fun aura(color: Int): android.graphics.drawable.Drawable {
+    val wash = android.graphics.drawable.GradientDrawable(
+      android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
+      intArrayOf(withAlpha(color, 0.32f), withAlpha(color, 0.08f), withAlpha(color, 0f)),
+    )
+    val pool = android.graphics.drawable.GradientDrawable().apply {
+      gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
+      colors = intArrayOf(withAlpha(color, 0.5f), withAlpha(color, 0f))
+      setGradientCenter(0.5f, 1f)
+      gradientRadius = expandedWidth * 0.45f
+    }
+    return android.graphics.drawable.LayerDrawable(arrayOf<android.graphics.drawable.Drawable>(wash, pool))
   }
 
   /** Breathes the border between the theme border and the glow color. */
@@ -190,7 +207,8 @@ internal class OverlayIsland(private val context: Context) {
     }
   }
 
-  private fun compactRow(renderer: Renderer, current: Islands.Entry, path: String): LinearLayout {
+  /** `header`: the expanded top row keeps only the leading mark; the body restates the trailing value. */
+  private fun compactRow(renderer: Renderer, current: Islands.Entry, path: String, header: Boolean = false): LinearLayout {
     val compact = current.template.optJSONObject("compact")
     return LinearLayout(context).apply {
       orientation = LinearLayout.HORIZONTAL
@@ -198,7 +216,7 @@ internal class OverlayIsland(private val context: Context) {
       setPadding(dp(14), 0, dp(14), 0)
       renderer.build(compact?.optJSONObject("leading"), "${path}0")?.let { addView(it) }
       addView(View(context), LinearLayout.LayoutParams(dp(16), 1, 1f))
-      renderer.build(compact?.optJSONObject("trailing"), "${path}1")?.let { addView(it) }
+      if (!header) renderer.build(compact?.optJSONObject("trailing"), "${path}1")?.let { addView(it) }
     }
   }
 

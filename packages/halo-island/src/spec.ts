@@ -39,14 +39,19 @@ export interface BoxStyle {
   opacity?: number;
   /** Take the remaining space in the parent row/column. */
   grow?: boolean;
+  /** Rows only: wrap children onto new lines — launcher grids, tag clouds. */
+  wrap?: boolean;
 }
+
+/** Faces the `pet` draws. Moods morph into each other, so any order looks alive. */
+export type Mood = 'idle' | 'happy' | 'love' | 'sleepy' | 'surprised' | 'thinking' | 'wink' | 'sad' | 'focused';
 
 /** Looping motion for any node. Respects reduced motion. */
 export type Effect = 'pulse' | 'bounce' | 'spin' | 'wiggle' | 'shimmer';
 
 export type IslandNode = NodeBody & {
   effect?: Effect;
-  /** Render only while this state key is set — the island grows as details arrive. */
+  /** Render only while this state key is set — the island grows as details arrive. `!key` inverts. */
   show?: string;
 };
 
@@ -85,9 +90,30 @@ type NodeBody =
   | { type: 'steps'; value: Num; count: number; height?: number; color?: Color; track?: Color }
   /** Counts down to (or up from) an epoch-millis timestamp. Runs natively, no updates needed. */
   | { type: 'timer'; to: Num; countUp?: boolean; style?: TextStyle }
-  /** `tint`: accent-tinted fill with accent content, the way system Live Activity buttons look. */
-  | { type: 'button'; action: string; label?: string; icon?: string; color?: Color; textColor?: Color; tint?: boolean }
-  | { type: 'spacer'; size?: number };
+  /**
+   * `tint`: accent-tinted fill with accent content, the way system Live Activity buttons look.
+   * `action` is yours, or built in: `go:<screen>` opens a screen, `back` returns, `close` collapses.
+   * `confirm`: the button turns into its own confirmation ("Pay ₹200?") and fires on the second tap.
+   * `shape`: `tile` stacks icon over label (launcher, controls), `circle` is icon-only and round.
+   */
+  | { type: 'button'; action: string; label?: string; icon?: string; color?: Color; textColor?: Color; tint?: boolean; confirm?: string; shape?: 'pill' | 'tile' | 'circle' }
+  | { type: 'spacer'; size?: number }
+  /**
+   * A face with eyes that blink, look at the finger and morph between moods. Put it in
+   * `compact.leading` and the island itself becomes a character. In-app renderer only.
+   */
+  | { type: 'pet'; mood?: string; size?: number; color?: Color; cheeks?: Color }
+  /** A sparkline with a soft gradient under it. `values` 0–1, array or comma list. */
+  | { type: 'line'; values: Num[] | string; height?: number; color?: Color; fill?: boolean; thickness?: number }
+  /**
+   * In-island input: one choice of `options`, written to `state[bind]` (and announced as the
+   * action `change:<bind>`). `values` are stored instead of labels when given.
+   */
+  | { type: 'chips'; bind: string; options: string[]; values?: string[]; color?: Color }
+  /** In-island input: drag to set `state[bind]` between 0 and 1. */
+  | { type: 'slider'; bind: string; icon?: string; color?: Color; track?: Color; height?: number }
+  /** In-island input: a control-center tile that flips `state[bind]`. */
+  | { type: 'toggle'; bind: string; label: string; icon?: string; color?: Color };
 
 export interface IslandTheme {
   background?: Color;
@@ -101,6 +127,10 @@ export interface IslandTheme {
   glow?: Color;
   /** Island fill as a gradient (overrides background). */
   gradient?: Color[];
+  /** `glass`: translucent, blurred material with a lit edge (Liquid Glass on iOS 26). */
+  material?: 'solid' | 'glass';
+  /** Light that pools at the bottom of the expanded island, in this color. */
+  aura?: Color;
   /**
    * The island's typeface, per weight: `{ regular: 'Figtree_500Medium', bold: 'Figtree_700Bold' }`.
    * Fonts the app ships (expo-font plugin or res/font). Missing weights fall back to the nearest one.
@@ -129,7 +159,7 @@ export function fontFor(fonts: IslandTheme['fonts'], weight: Weight = 'regular')
   return nearest.map((w) => fonts[w]).find(Boolean);
 }
 
-export type MotionPreset = 'bouncy' | 'snappy' | 'smooth' | 'none';
+export type MotionPreset = 'island' | 'bouncy' | 'snappy' | 'smooth' | 'none';
 export type Motion = MotionPreset | { stiffness: number; damping: number };
 
 export interface IslandTemplate {
@@ -137,6 +167,11 @@ export interface IslandTemplate {
   /** Shown when another island owns the space (iOS) — defaults to compact.leading. */
   minimal?: IslandNode;
   expanded?: IslandNode;
+  /**
+   * More expanded layouts, opened from buttons with `go:<name>`. The island resizes to each one
+   * and `back` (or a swipe right) returns — a whole app flow without leaving the island.
+   */
+  screens?: Record<string, IslandNode>;
   /** iOS Lock Screen / Android notification body — defaults to expanded. */
   lockScreen?: IslandNode;
   theme?: IslandTheme;
@@ -158,6 +193,8 @@ export const DEFAULT_THEME: Required<Omit<IslandTheme, 'light' | 'dark'>> = {
   glow: '',
   gradient: [],
   fonts: {},
+  material: 'solid',
+  aura: '',
 };
 
 // region Builders — sugar for the JSON above, so apps and agents write less.
@@ -211,7 +248,12 @@ export const ring = (value: Num, opts?: { size?: number; thickness?: number; col
 export const bar = (value: Num, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'bar', value, ...opts });
 export const steps = (value: Num, count: number, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'steps', value, count, ...opts });
 export const timer = (to: Num, opts?: { countUp?: boolean; style?: TextStyle }): IslandNode => ({ type: 'timer', to, ...opts });
-export const button = (action: string, label?: string, opts?: { icon?: string; color?: Color; textColor?: Color; tint?: boolean }): IslandNode => ({ type: 'button', action, label, ...opts });
+export const button = (action: string, label?: string, opts?: { icon?: string; color?: Color; textColor?: Color; tint?: boolean; confirm?: string; shape?: 'pill' | 'tile' | 'circle' }): IslandNode => ({ type: 'button', action, label, ...opts });
+export const pet = (mood?: string, opts?: { size?: number; color?: Color; cheeks?: Color }): IslandNode => ({ type: 'pet', mood, ...opts });
+export const line = (values: Num[] | string, opts?: { height?: number; color?: Color; fill?: boolean; thickness?: number }): IslandNode => ({ type: 'line', values, ...opts });
+export const chips = (bind: string, options: string[], opts?: { values?: string[]; color?: Color }): IslandNode => ({ type: 'chips', bind, options, ...opts });
+export const slider = (bind: string, opts?: { icon?: string; color?: Color; track?: Color; height?: number }): IslandNode => ({ type: 'slider', bind, ...opts });
+export const toggle = (bind: string, label: string, opts?: { icon?: string; color?: Color }): IslandNode => ({ type: 'toggle', bind, label, ...opts });
 export const bars = (values: Num[] | string, opts?: { active?: Num; height?: number; gap?: number; color?: Color; track?: Color; animate?: boolean }): IslandNode => ({ type: 'bars', values, ...opts });
 export const arc = (value: Num, opts?: { height?: number; thickness?: number; colors?: Color[]; track?: Color; glow?: boolean }): IslandNode => ({ type: 'arc', value, ...opts });
 export const timeline = (value: Num, icons: string[], opts?: { size?: number; color?: Color; track?: Color; ink?: Color }): IslandNode => ({ type: 'timeline', value, icons, ...opts });
@@ -224,8 +266,9 @@ export const fx = (node: IslandNode, effect: Effect): IslandNode => ({ ...node, 
 /** Shows `node` only while `state[key]` is set: `when('driver', text('{driver}'))`. */
 export const when = (key: string, node: IslandNode): IslandNode => ({ ...node, show: key });
 
-/** True when a `show` key is satisfied. */
-export const visible = (node: IslandNode, state: IslandState) => !node.show || !!state[node.show];
+/** True when a `show` key is satisfied. `!key` inverts it: shown while the key is off. */
+export const visible = (node: IslandNode, state: IslandState) =>
+  !node.show || (node.show[0] === '!' ? !on(state[node.show.slice(1)]) : on(state[node.show]));
 
 /** Large text reads better slightly tightened (-2%), the way display type is set. */
 export const tracking = (size: number) => (size >= 20 ? -0.02 * size : 0);
@@ -250,6 +293,15 @@ export function num(value: Num, state: IslandState): number {
   const n = Number(fill(value, state));
   return Number.isFinite(n) ? n : 0;
 }
+
+/** Resolves a list of numbers: an array of Nums or a comma list like '{uv}'. */
+export function nums(values: Num[] | string, state: IslandState): number[] {
+  if (Array.isArray(values)) return values.map((v) => num(v, state));
+  return fill(values, state).split(',').filter((s) => s.trim() !== '').map((s) => Number(s) || 0);
+}
+
+/** Truthy the way templates mean it: '', 0, false, null and 'false' are off. */
+export const on = (v: IslandState[string]) => !!v && v !== 'false' && v !== '0';
 
 // endregion
 

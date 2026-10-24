@@ -45,6 +45,8 @@ internal class Theme(json: JSONObject?) {
   /** Unset key line takes the accent, as Apple recommends. */
   val border = json.color("border", withAlpha(accent, 0.3f))
   val radius = json?.optDouble("radius", 32.0)?.toFloat() ?: 32f
+  /** Light pooling at the bottom of the expanded island; transparent when unset. */
+  val aura = json.color("aura", Color.TRANSPARENT)
   private val fonts = json?.optJSONObject("fonts")
 
   /** Same nearest-weight fallback as fontFor() in spec.ts. */
@@ -69,6 +71,13 @@ internal fun num(value: Any?, state: JSONObject): Float = when (value) {
   is Number -> value.toFloat()
   is String -> fill(value, state).toFloatOrNull() ?: 0f
   else -> 0f
+}
+
+/** Truthy the way templates mean it, same as on() in spec.ts: '', 0, false, null and 'false' are off. */
+internal fun on(value: Any?): Boolean = when (value) {
+  null, JSONObject.NULL, false, "", "false", "0" -> false
+  is Number -> value.toDouble() != 0.0
+  else -> true
 }
 
 /** Depth-first walk, used to derive notification content from the same tree. */
@@ -99,8 +108,8 @@ internal class Renderer(
   fun build(node: JSONObject?, path: String = "0"): View? {
     node ?: return null
     node.optString("show").takeIf { it.isNotEmpty() }?.let { key ->
-      val v = state.opt(key)
-      if (v == null || v == JSONObject.NULL || v == false || v == "" || v == 0) return null
+      val shown = if (key.startsWith("!")) !on(state.opt(key.drop(1))) else on(state.opt(key))
+      if (!shown) return null
     }
     val view = body(node, path) ?: return null
     node.optString("effect").takeIf { it.isNotEmpty() }?.let { loop(view, it) }
@@ -135,8 +144,18 @@ internal class Renderer(
           node.color("color", theme.accent), node.color("track", withAlpha(theme.foreground, 0.14f)), node.color("ink", theme.background), node.optDouble("size", 30.0).toFloat())
         .also { it.set(num(node.opt("value"), state)) }
       "timer" -> timer(node)
-      "button" -> button(node)
+      // Screens are stripped before native sees the template, so in-island navigation has nowhere to go.
+      "button" -> node.optString("action").takeUnless { it.startsWith("go:") || it == "back" }?.let { button(node) }
       "spacer" -> View(context)
+      "line" -> (reuse(path, node.toString()) { SparklineView(context, node.color("color", theme.accent), node.optDouble("thickness", 2.0).toFloat(), node.optBoolean("fill", true)) } as SparklineView)
+        .also { it.set(parseValues(node.opt("values"), state)) }
+      "pet" -> (reuse(path, "pet") { PetView(context) } as PetView).apply {
+          set(fill(node.optString("mood"), state), node.color("color", theme.foreground), node.color("cheeks", Color.parseColor("#FF7A9A")))
+          val s = node.optInt("size", 22)
+          layoutParams = LinearLayout.LayoutParams(px((s * 1.5f).toInt()), px(s))
+        }
+      // ponytail: inputs write state through the JS loop, which isn't running over other apps. In-app only.
+      "chips", "slider", "toggle" -> null
       else -> null
     }
   }
@@ -184,7 +203,7 @@ internal class Renderer(
       val type = child.optString("type")
       val grows = child.optJSONObject("style")?.optBoolean("grow") == true ||
         (type in BARS && isRow) || (type == "spacer" && !child.has("size"))
-      val stretch = !isRow && align == "stretch" && type !in FIXED_SIZE
+      val stretch = !isRow && align == "stretch" && type !in FIXED_SIZE && child.optString("shape") != "circle"
       val explicit = view.layoutParams
       val params = when {
         grows && isRow -> LinearLayout.LayoutParams(0, explicit?.height ?: wrap, 1f)
@@ -407,32 +426,70 @@ internal class Renderer(
     }
   }
 
+  /**
+   * `shape`: pill (default), tile (icon over label, control-center style) or circle (icon only).
+   * `confirm`: the first tap turns the label into the question, the second fires; it disarms after 3s.
+   */
   private fun button(node: JSONObject): View {
     val tinted = node.optBoolean("tint")
     val base = node.color("color", theme.accent)
     val bg = if (tinted) withAlpha(base, 0.22f) else base
     val ink = node.color("textColor", if (tinted) base else theme.background)
     val action = node.optString("action")
-    val label = node.optString("label").takeIf { it.isNotEmpty() }?.let { fill(it, state) }
+    val shape = node.optString("shape")
+    val tile = shape == "tile"
+    val circle = shape == "circle"
+    val name = node.optString("label").takeIf { it.isNotEmpty() }?.let { fill(it, state) }
+    val label = name.takeIf { !circle }
+    val confirm = node.optString("confirm").takeIf { it.isNotEmpty() }?.let { fill(it, state) }
+    var text: TextView? = null
+    var armed = false
     return LinearLayout(context).apply {
-      orientation = LinearLayout.HORIZONTAL
+      orientation = if (tile) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER
-      minimumHeight = dp(38).toInt()
-      val horizontal = dp(if (label == null) 10 else 16).toInt()
-      setPadding(horizontal, 0, horizontal, 0)
-      background = RippleDrawable(ColorStateList.valueOf(Color.argb(48, 255, 255, 255)), rounded(bg, dp(19)), null)
+      when {
+        tile -> { minimumWidth = px(64); setPadding(px(10), px(10), px(10), px(10)) }
+        circle -> Unit
+        else -> { minimumHeight = px(38); val h = px(if (label == null) 10 else 16); setPadding(h, 0, h, 0) }
+      }
+      background = RippleDrawable(ColorStateList.valueOf(Color.argb(48, 255, 255, 255)), rounded(bg, dp(if (tile) 18 else if (circle) 22 else 19)), null)
       isClickable = true
-      contentDescription = label ?: action
-      node.optString("icon").takeIf { it.isNotEmpty() }?.let { addView(icon(fill(it, state), 16, ink)) }
+      contentDescription = name ?: action
+      node.optString("icon").takeIf { it.isNotEmpty() }?.let { addView(icon(fill(it, state), if (tile) 22 else if (circle) 20 else 16, ink)) }
       label?.let {
-        addView(this@Renderer.label(it, JSONObject().put("weight", "bold").put("size", 14)).apply { setTextColor(ink) },
-          LinearLayout.LayoutParams(wrap, wrap).apply { if (childCount > 0) marginStart = dp(6).toInt() })
+        val view = this@Renderer.label(it, JSONObject().put("weight", if (tile) "semibold" else "bold").put("size", if (tile) 12 else 14)).apply { setTextColor(ink) }
+        text = view
+        addView(view, LinearLayout.LayoutParams(wrap, wrap).apply {
+          if (childCount > 0 && tile) topMargin = px(6)
+          if (childCount > 0 && !tile) marginStart = px(6)
+        })
+      }
+      val disarm = Runnable {
+        armed = false
+        text?.text = label
+        this@apply.animate().scaleX(1f).scaleY(1f).setDuration(160).start()
       }
       setOnClickListener {
+        if (confirm != null && !armed) {
+          armed = true
+          text?.text = confirm
+          this@apply.animate().scaleX(1.06f).scaleY(1.06f).setDuration(160).start()
+          it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+          postDelayed(disarm, 3000)
+          return@setOnClickListener
+        }
+        removeCallbacks(disarm)
+        if (armed) disarm.run()
         it.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         onAction(action)
       }
-    }.also { it.layoutParams = LinearLayout.LayoutParams(wrap, dp(38).toInt()) }
+    }.also {
+      it.layoutParams = when {
+        tile -> LinearLayout.LayoutParams(wrap, wrap)
+        circle -> LinearLayout.LayoutParams(px(44), px(44))
+        else -> LinearLayout.LayoutParams(wrap, px(38))
+      }
+    }
   }
 
   // endregion
@@ -483,6 +540,7 @@ internal class Renderer(
     "bars" -> px(node.optInt("height", 40))
     "arc" -> px(node.optInt("height", 64))
     "timeline" -> px(node.optInt("size", 30))
+    "line" -> px(node.optInt("height", 32))
     else -> px(node.optInt("height", 4))
   }
 
@@ -499,8 +557,8 @@ internal class Renderer(
   companion object {
     private const val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
     private const val match = LinearLayout.LayoutParams.MATCH_PARENT
-    private val FIXED_SIZE = setOf("icon", "image", "ring", "spacer")
-    private val BARS = setOf("bar", "steps", "track", "bars", "arc", "timeline")
+    private val FIXED_SIZE = setOf("icon", "image", "ring", "spacer", "pet")
+    private val BARS = setOf("bar", "steps", "track", "bars", "arc", "timeline", "line")
     private val FONTS = mutableMapOf<String, Typeface>()
     // ponytail: grows with distinct mono-text paths per island; tiny in practice, clear per island if it ever matters.
     private val TEXTS = mutableMapOf<String, String>()

@@ -1,0 +1,71 @@
+# halo-island
+
+> Dynamic Island for React Native. One JSON template renders the in-app island (iOS, Android, web; pure JS via react-native-svg + Reanimated), the Android island over other apps, and the Android notification / Live Update. iOS Live Activities: not yet. Contract: src/spec.ts.
+
+## Setup
+- npx expo install halo-island react-native-reanimated react-native-worklets react-native-svg
+- Optional: expo-haptics, expo-blur, expo-glass-effect, lottie-react-native
+- Mount once at the root: <HaloIslandHost placement="auto|cutout|below" theme={} motion={} haptics dim />
+- Android over-other-apps island: app.json plugins ["halo-island", { "overlay": true, "overlayReason": "...", "rive": false }] + requestPermissions({ overlay: true })
+
+## Runtime API
+- const t = island(template); const live = t.start(state, { id, overlay, system=true, inApp=true, expanded, duration })
+- t.show(state)  // in-app toast, ends after 3s
+- live.update(patch, { alert })  // merge; send only changed keys; alert pops it open
+- live.end(); endAll(); live.on(action, (state) => {})
+- useIslandAction(action, (islandId, state) => {})  // taps from every surface, even app killed
+- onAction((islandId, action, state) => {})
+- setState(id, patch)  // what inputs do; focus(id) brings an island to the front
+- lookAt(x, y, { width, height })  // point every pet at a screen position
+- capabilities() -> { liveActivities, liveUpdates, notifications, overlay }; openLiveUpdateSettings()
+- asset(require('./x.png')) -> uri for image/rive
+- presets: ride timer media goal progress call score toast
+
+## Template (plain JSON, all fields optional except compact)
+{ compact: { leading?, trailing? }, minimal?, expanded?, screens?: { [name]: node }, lockScreen?, theme?, motion?, link? }
+- Strings take {key} placeholders filled from state. Missing keys render empty.
+- Num = number | '{key}'. Lists = array or comma string '{key}'.
+- Expanded = compact row as header + expanded body below.
+
+## Nodes (builder -> JSON type)
+row(style?, ...kids) / column(style?, ...kids)  style: gap padding align(start|center|end|stretch|baseline) justify(start|center|end|between) background gradient[] radius border{width,color} width height opacity grow wrap
+text(value, { size weight(regular|medium|semibold|bold|heavy) color mono font lines align })
+icon(name, { size color }) | svg(pathData, { size width color viewBox stroke })
+image(uri, { size width radius fit(cover|contain) glow })
+ring(value0to1, { size thickness color track })
+bar(value, { height color track }) | track(value, marker?, opts) | steps(value, count, opts)
+bars(values, { active height gap color track animate }) | line(values, { height color fill thickness })
+arc(value, { height thickness colors[] track glow }) | timeline(value, icons[], { size color track ink })
+timer(toEpochMs, { countUp style })
+button(action, label?, { icon color textColor tint confirm shape(pill|tile|circle) })
+chips(bind, options[], { values[] color }) | slider(bind, { icon color track height }) | toggle(bind, label, { icon color })
+pet(mood?, { size color cheeks })  moods: idle happy love sleepy surprised thinking wink sad focused
+lottie(uri, { size loop }) | rive(uri, { size width artboard stateMachine trigger }) | spacer(size?)
+fx(node, 'pulse'|'bounce'|'spin'|'wiggle'|'shimmer') | when('key' | '!key', node)
+
+## Actions
+- Custom: any string. Built-in: go:<screen>, back, close.
+- Inputs write state[bind] (chips: option or values[i]; slider: 0-1; toggle: boolean) and emit change:<bind>.
+- confirm: first tap shows the confirm text, second tap fires.
+
+## Theme
+{ background foreground secondary accent border radius glow gradient[] material('solid'|'glass') aura fonts{regular..heavy} light{} dark{} }
+Colors: any RN color string. HaloIslandHost theme = base; template theme wins.
+
+## Motion
+'island' (default) | 'bouncy' | 'snappy' | 'smooth' | 'none' | { stiffness, damping }
+
+## Truthiness (show, toggles)
+Off: '' 0 false null undefined 'false' '0'. Everything else is on. '!key' inverts.
+
+## Surface limits
+- In-app: everything.
+- Android overlay: no chips/slider/toggle, no screens (go:/back hidden), no row wrap, no glass (solid), pet blinks + morphs but doesn't track the finger.
+- Android notification: text, first icon, first progress (ring/bar/steps), timer, up to 3 buttons (confirm and go:/back/close buttons omitted). Live Update chip on Android 16+.
+- Template + state <= 4KB (screens are stripped before native).
+
+## Rules of thumb
+- Start from a preset; keep state flat; update only changed keys.
+- Use when() for details that arrive later; '!key' for the "until then" state.
+- Put confirm on paid or destructive buttons.
+- Interactive inputs and screens are in-app only.

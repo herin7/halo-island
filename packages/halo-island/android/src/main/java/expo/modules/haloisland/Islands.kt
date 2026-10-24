@@ -110,7 +110,8 @@ internal object Notifications {
         }
         "timer" -> if (timerTo == null) { timerTo = num(n.opt("to"), state).toLong(); timerUp = n.optBoolean("countUp") }
         "icon" -> if (iconName == null) iconName = n.optString("name")
-        "button" -> buttons += n
+        // A notification action fires on one tap, so confirm buttons and in-island navigation stay in-app.
+        "button" -> if (!n.has("confirm") && n.optString("action").let { !it.startsWith("go:") && it != "back" && it != "close" }) buttons += n
       }
     }
     compact?.optJSONObject("leading")?.walk(visit)

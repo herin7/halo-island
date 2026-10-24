@@ -1,16 +1,32 @@
 {
   "name": "halo-island",
-  "version": "0.1.0",
-  "description": "Dynamic Island for React Native: iOS Live Activities, an Android island and Live Updates, and an in-app island — from one JSON design.",
+  "version": "0.2.0",
+  "description": "Dynamic Island for React Native: an in-app island on iOS, Android and web, an Android island over other apps, and Android Live Updates — from one JSON design.",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "files": ["src", "android", "ios", "app.plugin.js", "expo-module.config.json", "!**/build", "!**/__tests__"],
-  "keywords": ["react-native", "expo", "dynamic-island", "live-activities", "live-updates", "android", "ios", "notch"],
+  "files": ["src", "android", "ios", "app.plugin.js", "expo-module.config.json", "llms.txt", "!**/build", "!**/__tests__"],
+  "keywords": ["react-native", "expo", "dynamic-island", "live-activities", "live-updates", "android", "ios", "notch", "island", "toast"],
+  "author": "Herin Soni",
   "license": "MIT",
+  "homepage": "https://github.com/herin7/halo-island#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/herin7/halo-island.git", "directory": "packages/halo-island" },
+  "bugs": { "url": "https://github.com/herin7/halo-island/issues" },
+  "scripts": { "test": "bun test" },
   "peerDependencies": {
     "expo": "*",
     "react": "*",
     "react-native": "*",
-    "react-native-reanimated": ">=4.0.0"
+    "react-native-reanimated": ">=4.0.0",
+    "react-native-svg": ">=15.0.0",
+    "expo-haptics": "*",
+    "expo-blur": "*",
+    "expo-glass-effect": "*",
+    "lottie-react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "expo-haptics": { "optional": true },
+    "expo-blur": { "optional": true },
+    "expo-glass-effect": { "optional": true },
+    "lottie-react-native": { "optional": true }
   }
 }

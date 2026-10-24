@@ -126,7 +126,14 @@ class HaloIslandModule : Module() {
       val activity = appContext.currentActivity ?: return@Function null
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return@Function null
       val cutout = activity.window.decorView.rootWindowInsets?.displayCutout ?: return@Function null
-      val rect = cutout.boundingRects.firstOrNull { it.top == 0 } ?: return@Function null
+      val band = cutout.boundingRects.firstOrNull { it.top == 0 } ?: return@Function null
+      // The bounding rect spans the whole inset band; the cutout path is the actual hole (API 31+).
+      val hole = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        cutout.cutoutPath?.let { path ->
+          android.graphics.RectF().also { path.computeBounds(it, true) }.takeIf { !it.isEmpty && android.graphics.RectF(band).contains(it) }
+        }
+      } else null
+      val rect = hole ?: android.graphics.RectF(band)
       val d = context.resources.displayMetrics.density
       mapOf("x" to rect.left / d, "y" to rect.top / d, "width" to rect.width() / d, "height" to rect.height() / d)
     }
