@@ -119,6 +119,7 @@ internal class Renderer(
   private fun body(node: JSONObject, path: String): View? {
     return when (node.optString("type")) {
       "row" -> box(node, LinearLayout.HORIZONTAL, path)
+      "stack" -> stack(node, path)
       "column" -> box(node, LinearLayout.VERTICAL, path)
       "text" -> label(fill(node.optString("text"), state), node.optJSONObject("style")).also { roll(it, path) }
       "icon" -> if (node.has("path")) PathIconView(context).apply {
@@ -161,6 +162,18 @@ internal class Renderer(
   }
 
   // region Layout
+
+  /** Children layered and centered, the first one setting the size — same as the in-app `stack`. */
+  private fun stack(node: JSONObject, path: String): View {
+    val frame = FrameLayout(context)
+    val children = node.optJSONArray("children") ?: return frame
+    for (i in 0 until children.length()) {
+      build(children.optJSONObject(i), "$path.$i")?.let {
+        frame.addView(it, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+      }
+    }
+    return frame
+  }
 
   private fun box(node: JSONObject, orientation: Int, path: String): View {
     val style = node.optJSONObject("style")

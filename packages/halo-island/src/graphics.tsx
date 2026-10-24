@@ -167,7 +167,7 @@ export function Sparkline({ values, height, color, fill, thickness }: { values: 
 }
 
 /** A shallow arc (sun path, journey) with a glowing marker riding it to `value`. */
-export function Arc({ value, height, thickness, colors, track, glow }: { value: number; height: number; thickness: number; colors: string[]; track: string; glow: boolean }) {
+export function Arc({ value, height, thickness, colors, track, glow, marker, markerSize = 28 }: { value: number; height: number; thickness: number; colors: string[]; track: string; glow: boolean; marker?: ReactNode; markerSize?: number }) {
   const [w, setW] = useState(0);
   const id = useMemo(() => `halo-arc-${gradientIds++}`, []);
   const p = useSharedValue(clamp(value));
@@ -185,11 +185,20 @@ export function Arc({ value, height, thickness, colors, track, glow }: { value: 
     return l;
   }, [w, height]);
   const progress = useAnimatedProps(() => ({ strokeDashoffset: len * (1 - p.value) }));
-  const marker = useAnimatedProps(() => {
+  const markerProps = useAnimatedProps(() => {
     const t = p.value;
     return { cx: (1 - t) ** 2 * x0 + 2 * (1 - t) * t * cx + t * t * x1, cy: (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t * t * y0 };
   });
   const last = colors[colors.length - 1];
+  // An object riding the arc (a plane): it follows the curve and tilts along its slope.
+  const rider = useAnimatedStyle(() => {
+    const t = p.value;
+    const x = (1 - t) ** 2 * x0 + 2 * (1 - t) * t * cx + t * t * x1;
+    const y = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t * t * y0;
+    const dx = 2 * (1 - t) * (cx - x0) + 2 * t * (x1 - cx);
+    const dy = 2 * (1 - t) * (cy - y0) + 2 * t * (y0 - cy);
+    return { transform: [{ translateX: x - markerSize / 2 }, { translateY: y - markerSize / 2 }, { rotate: `${Math.atan2(dy, dx)}rad` }] };
+  });
   return (
     <View style={{ height, alignSelf: 'stretch' }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
       {w ? (
@@ -201,10 +210,11 @@ export function Arc({ value, height, thickness, colors, track, glow }: { value: 
           </Defs>
           <Path d={d} stroke={track} strokeWidth={thickness} fill="none" strokeLinecap="round" strokeDasharray="0.1 8" />
           <APath d={d} stroke={`url(#${id})`} strokeWidth={thickness} fill="none" strokeLinecap="round" strokeDasharray={`${len} ${len}`} animatedProps={progress} />
-          {glow ? <ACircle animatedProps={marker} r={thickness * 3.4} fill={last} opacity={0.22} /> : null}
-          <ACircle animatedProps={marker} r={thickness * 1.5} fill="#FFFFFF" stroke={last} strokeWidth={thickness * 0.8} />
+          {glow ? <ACircle animatedProps={markerProps} r={thickness * 3.4} fill={last} opacity={0.22} /> : null}
+          {marker ? null : <ACircle animatedProps={markerProps} r={thickness * 1.5} fill="#FFFFFF" stroke={last} strokeWidth={thickness * 0.8} />}
         </Svg>
       ) : null}
+      {w && marker ? <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, top: 0, width: markerSize, height: markerSize }, rider]}>{marker}</Animated.View> : null}
     </View>
   );
 }

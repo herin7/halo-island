@@ -113,7 +113,7 @@ export function focus(id: string) {
 /** Writes in-island input (chips, sliders, toggles) into an island's state, on every surface. */
 export function setState(id: string, patch: IslandState) {
   const entry = islands.get(id);
-  if (!entry) return;
+  if (!entry || !changes(entry.state, patch)) return;
   entry.state = { ...entry.state, ...patch };
   if (native && entry.system) native.update(id, JSON.stringify(entry.state), false);
   changed();
@@ -176,6 +176,11 @@ export function hex(color: string): string {
 
 function normalize(value: unknown, key?: string): unknown {
   if (typeof value === 'string' && key && COLOR_KEYS.has(key)) return hex(value);
+  // Registered images and .riv files become loadable uris for native views.
+  if (typeof value === 'string' && key === 'uri') {
+    const src = assets.get(value);
+    if (typeof src === 'number') return asset(src);
+  }
   if (Array.isArray(value)) return value.map((v) => normalize(v, key === 'gradient' || key === 'colors' ? 'color' : undefined));
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, normalize(v, k)]));
@@ -200,7 +205,10 @@ export function toNative(template: IslandTemplate) {
 export function start(template: IslandTemplate, state: IslandState = {}, options: StartOptions = {}): LiveIsland {
   const id = options.id ?? `island-${Date.now().toString(36)}-${(counter++).toString(36)}`;
   const system = options.system !== false && options.duration == null;
-  const entry: Active = { id, template, state: { ...state }, options, key: counter++, alert: 0, system: system || !!options.overlay };
+  // Starting an id that is already live takes it over in place: same key, so the island morphs to
+  // the new content instead of popping as if it were new.
+  const previous = islands.get(id);
+  const entry: Active = { id, template, state: { ...state }, options, key: previous?.key ?? counter++, alert: previous?.alert ?? 0, system: system || !!options.overlay };
   islands.delete(id);
   islands.set(id, entry);
 
@@ -213,14 +221,17 @@ export function start(template: IslandTemplate, state: IslandState = {}, options
   }
   changed();
 
+  // Every handle acts on whatever currently owns the id, so a stale handle from an earlier start
+  // can't write to an island nobody sees — and a handle whose island was replaced stays useful.
   const live: LiveIsland = {
     id,
-    get state() { return entry.state; },
+    get state() { return islands.get(id)?.state ?? entry.state; },
     update(patch, opts) {
-      if (!islands.has(id)) return;
-      entry.state = { ...entry.state, ...patch };
-      if (opts?.alert) entry.alert++;
-      if (native && entry.system) native.update(id, JSON.stringify(entry.state), !!opts?.alert);
+      const current = islands.get(id);
+      if (!current || !changes(current.state, patch)) return;
+      current.state = { ...current.state, ...patch };
+      if (opts?.alert) current.alert++;
+      if (native && current.system) native.update(id, JSON.stringify(current.state), !!opts?.alert);
       changed();
     },
     end() {
@@ -232,9 +243,16 @@ export function start(template: IslandTemplate, state: IslandState = {}, options
       return onAction((from, a, s) => from === id && a === action && handler(s));
     },
   };
-  if (options.duration != null) setTimeout(() => live.end(), options.duration);
+  // Ends this start only: if the id was started again meanwhile, the newer island stays.
+  if (options.duration != null) setTimeout(() => islands.get(id) === entry && live.end(), options.duration);
   return live;
 }
+
+/** True when `patch` would change `state` — repeated identical updates cost nothing. */
+const changes = (state: IslandState, patch: IslandState) => Object.keys(patch).some((k) => state[k] !== patch[k]);
+
+/** The live island with this id, if any — for code that didn't keep the handle. */
+export const get = (id: string): IslandState | null => islands.get(id)?.state ?? null;
 
 /** A reusable template: `const ride = island({...}); const live = ride.start({ eta: '4 min' })`. */
 export function island(template: IslandTemplate) {
@@ -264,6 +282,26 @@ export async function requestPermissions(opts: { overlay?: boolean } = {}): Prom
 }
 
 export const openLiveUpdateSettings = () => native?.openLiveUpdateSettings?.();
+
+// region Assets
+
+/** What `require()` returns for images/.riv (a number) or Lottie JSON (an object), or a URL. */
+export type AssetSource = number | string | object;
+const assets = new Map<string, AssetSource>();
+
+/**
+ * Names for bundled media, so templates stay plain JSON: `registerAssets({ scooter:
+ * require('./scooter.png'), ride: require('./ride.json') })`, then `image('scooter')`,
+ * `lottie('ride')`, `rive('car')` — or `image('{vehicle}')` to pick one from state.
+ */
+export function registerAssets(map: Record<string, AssetSource>) {
+  for (const [name, source] of Object.entries(map)) assets.set(name, source);
+}
+
+/** A registered asset by name; anything else is treated as a URL. */
+export const resolveAsset = (nameOrUri: string): AssetSource => assets.get(nameOrUri) ?? nameOrUri;
+
+// endregion
 
 /**
  * A bundled image as a uri every surface can load: `image(asset(require('./logo.png')))`.

@@ -1,12 +1,12 @@
 // HOST v2 READY — in-app renderer: JS-drawn graphics, screens, inputs, pet, glass, bubble.
 import { requireNativeView } from 'expo';
-import { ComponentType, ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { ComponentType, ReactNode, RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dimensions, Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useColorScheme, useWindowDimensions } from 'react-native';
 import Animated, { Easing, FadeIn, FadeInDown, FadeOut, FadeOutUp, LinearTransition, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { Arc, Bars, Icon, Pet, Ring, Sparkline, Timeline, alpha, clamp } from './graphics';
-import { Active, Cutout, emitAction, focus, native, nativeJson, setState, springOf, store } from './island';
-import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTemplate, IslandTheme, Motion, TextStyle, fill, fontFor, num, nums, on, resolveTheme, tracking, visible } from './spec';
+import { Active, AssetSource, Cutout, emitAction, focus, native, nativeJson, resolveAsset, setState, springOf, store } from './island';
+import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTemplate, IslandTheme, Motion, Num, TextStyle, fill, fontFor, num, nums, on, resolveTheme, tracking, visible } from './spec';
 
 // region Optional modules — each is used only when the app already ships it.
 
@@ -16,9 +16,13 @@ function optional<T>(load: () => T): T | null {
 
 /** Rive needs the native module (Android). Everything else here is drawn in JS. */
 const NativeGraphic = native ? optional(() => requireNativeView<{ spec: string; style?: ViewStyle }>('HaloGraphic')) : null;
-const LottieView = optional(() => require('lottie-react-native').default as ComponentType<{ source: { uri: string }; autoPlay?: boolean; loop?: boolean; style?: ViewStyle }>);
+const LottieView = optional(() => require('lottie-react-native').default as ComponentType<{ source: object | number; autoPlay?: boolean; loop?: boolean; speed?: number; resizeMode?: string; style?: ViewStyle }>);
+type RiveHandle = { fireState(stateMachine: string, input: string): void; setInputState(stateMachine: string, input: string, value: number | boolean): void };
+const RiveView = optional(() => require('rive-react-native').default as ComponentType<{ ref?: React.Ref<RiveHandle>; source?: number | { uri: string }; url?: string; artboardName?: string; stateMachineName?: string; autoplay?: boolean; fit?: string; style?: ViewStyle }>);
 const Haptics = optional(() => require('expo-haptics') as typeof import('expo-haptics'));
-const Blur = optional(() => require('expo-blur').BlurView as ComponentType<{ intensity?: number; tint?: string; style?: ViewStyle }>);
+const Blur = optional(() => require('expo-blur').BlurView as ComponentType<{ intensity?: number; tint?: string; blurTarget?: RefObject<View | null>; blurMethod?: string; style?: ViewStyle }>);
+/** Android blurs only what's inside a BlurTargetView; the host gets that view's ref. */
+let blurTarget: RefObject<View | null> | undefined;
 const Glass = optional(() => {
   const g = require('expo-glass-effect');
   return g.isLiquidGlassAvailable?.() ? (g.GlassView as ComponentType<{ glassEffectStyle?: string; tintColor?: string; style?: ViewStyle }>) : null;
@@ -114,16 +118,24 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
         </View>
       );
     }
+    case 'stack': {
+      const s = node.style ?? {};
+      // The first child sets the size; the rest sit centered on top of it.
+      return (
+        <View style={{ alignItems: 'center', justifyContent: 'center', padding: s.padding, backgroundColor: s.background, borderRadius: s.radius, width: s.width, height: s.height, opacity: s.opacity }}>
+          {node.children.map((child, i) => (
+            <View key={i} style={i === 0 ? undefined : [StyleSheet.absoluteFill, styles.center]} pointerEvents="box-none">
+              <Node node={child} ctx={ctx} />
+            </View>
+          ))}
+        </View>
+      );
+    }
     case 'text': {
       const value = fill(node.text, state);
       const style = textStyle(node.style, theme);
       if (!node.style?.mono) return <Text style={style} numberOfLines={node.style?.lines ?? 1} maxFontSizeMultiplier={1.3}>{value}</Text>;
-      // Numbers roll: the new value slides up into place as the old one leaves.
-      return (
-        <Animated.View layout={LinearTransition.springify().dampingRatio(0.9)} style={{ overflow: 'hidden' }}>
-          <Animated.Text key={value} entering={FadeInDown.duration(280).easing(Easing.out(Easing.cubic))} exiting={FadeOutUp.duration(180)} style={style} numberOfLines={1} maxFontSizeMultiplier={1.3}>{value}</Animated.Text>
-        </Animated.View>
-      );
+      return <Rolling value={value} style={style} />;
     }
     case 'icon':
       return <Icon name={node.name ? fill(node.name, state) : undefined} path={node.path} viewBox={node.viewBox} stroke={node.stroke} size={node.size ?? 18} width={node.width} color={node.color ?? theme.foreground} />;
@@ -133,13 +145,14 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
       const box = { width: node.width ?? size, height: size, borderRadius: node.radius ?? 8 };
       // An empty uri is a placeholder slot (e.g. a result that hasn't arrived yet).
       if (!uri) return <Shimmer style={box} />;
-      const img = <Animated.Image entering={FadeIn.duration(400)} source={{ uri }} style={box} resizeMode={node.fit ?? 'cover'} />;
+      const source = imageSource(resolveAsset(uri));
+      const img = <Animated.Image key={uri} entering={FadeIn.duration(400)} source={source} style={box} resizeMode={node.fit ?? 'cover'} />;
       // Android's blurRadius frosts the whole box grey instead of bleeding color, so no glow there.
       if (!node.glow || Platform.OS === 'android') return img;
       // Ambient light: a blurred, enlarged copy bleeds the artwork's color into the black.
       return (
         <View>
-          <Image source={{ uri }} blurRadius={24} style={[box, StyleSheet.absoluteFill, { opacity: 0.8, transform: [{ scale: 1.7 }] }]} />
+          <Image source={source} blurRadius={24} style={[box, StyleSheet.absoluteFill, { opacity: 0.8, transform: [{ scale: 1.7 }] }]} />
           {img}
         </View>
       );
@@ -165,7 +178,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     }
     case 'track': {
       const color = node.color ?? theme.accent;
-      return <Track value={num(node.value, state)} marker={node.marker ? fill(node.marker, state) : ''} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} grow={inRow} />;
+      return <Track value={num(node.value, state)} marker={node.marker ? fill(node.marker, state) : ''} end={node.end ? fill(node.end, state) : ''} markerSize={node.markerSize} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} grow={inRow} />;
     }
     case 'bars': {
       const color = node.color ?? theme.accent;
@@ -176,20 +189,23 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     case 'line':
       return <View style={{ flexGrow: inRow ? 1 : undefined, alignSelf: 'stretch' }}><Sparkline values={nums(node.values, state)} height={node.height ?? 40} color={node.color ?? theme.accent} fill={node.fill ?? true} thickness={node.thickness ?? 2} /></View>;
     case 'arc':
-      return <Arc value={num(node.value, state)} height={node.height ?? 64} thickness={node.thickness ?? 5} colors={node.colors?.length ? node.colors : [theme.accent]} track={node.track ?? alpha(theme.foreground, 0.2)} glow={node.glow ?? true} />;
+      return <Arc value={num(node.value, state)} height={node.height ?? 64} thickness={node.thickness ?? 5} colors={node.colors?.length ? node.colors : [theme.accent]} track={node.track ?? alpha(theme.foreground, 0.2)} glow={node.glow ?? true} markerSize={node.markerSize ?? 28}
+        marker={node.marker ? <Mark name={fill(node.marker, state)} size={node.markerSize ?? 28} color={theme.accent} /> : undefined} />;
     case 'timeline':
       return <View style={{ flexGrow: inRow ? 1 : undefined, alignSelf: 'stretch' }}><Timeline value={num(node.value, state)} icons={node.icons.map((i) => fill(i, state))} size={node.size ?? 30} color={node.color ?? theme.accent} track={node.track ?? alpha(theme.foreground, 0.14)} ink={node.ink ?? theme.background} /></View>;
     case 'pet':
       return <Pet mood={node.mood ? fill(node.mood, state) : 'idle'} size={node.size ?? 22} color={node.color ?? theme.foreground} cheeks={node.cheeks ?? '#FF7AB6'} still={ctx.still} />;
     case 'lottie': {
       const size = node.size ?? 28;
-      return LottieView ? <LottieView source={{ uri: fill(node.uri, state) }} autoPlay loop={node.loop ?? true} style={{ width: size, height: size }} /> : null;
+      if (!LottieView) return null;
+      const src = resolveAsset(fill(node.uri, state));
+      // Keyed by source so swapping animations restarts cleanly instead of blending frames.
+      return <LottieView key={fill(node.uri, state)} source={typeof src === 'string' ? { uri: src } : src} autoPlay loop={node.loop ?? true} speed={node.speed} resizeMode="contain" style={{ width: node.width ?? size, height: size }} />;
     }
-    case 'rive': {
+    case 'rive':
+      if (RiveView) return <RiveNode node={node} state={state} />;
       if (!NativeGraphic) return null;
-      const size = node.size ?? 40;
-      return <NativeGraphic spec={nativeJson({ node, theme, state })} style={{ width: node.width ?? size, height: size }} />;
-    }
+      return <NativeGraphic spec={nativeJson({ node, theme, state })} style={{ width: node.width ?? node.size ?? 40, height: node.size ?? 40 }} />;
     case 'timer':
       return <Timer to={num(node.to, state)} countUp={node.countUp} style={textStyle(node.style, theme)} />;
     case 'button':
@@ -203,6 +219,35 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     case 'spacer':
       return node.size != null ? <View style={inRow ? { width: node.size } : { height: node.size }} /> : <View style={{ flexGrow: 1 }} />;
   }
+}
+
+function imageSource(src: AssetSource) {
+  return typeof src === 'string' ? { uri: src } : (src as number);
+}
+
+type RiveNodeT = Extract<IslandNode, { type: 'rive' }>;
+
+/** A Rive file whose state machine follows the island's state: triggers fire on change, inputs track values. */
+function RiveNode({ node, state }: { node: RiveNodeT; state: IslandState }) {
+  const ref = useRef<RiveHandle>(null);
+  const size = node.size ?? 40;
+  const src = resolveAsset(fill(node.uri, state));
+  const trigger = node.trigger ? fill(node.trigger, state) : '';
+  const lastTrigger = useRef(trigger);
+  useEffect(() => {
+    if (!node.stateMachine || !trigger || trigger === lastTrigger.current) return;
+    lastTrigger.current = trigger;
+    // The filled value is the trigger's name: '{event}' with event 'honk' fires 'honk'.
+    ref.current?.fireState(node.stateMachine, trigger);
+  }, [trigger]);
+  const inputs = Object.entries(node.inputs ?? {}).map(([k, v]) => [k, typeof v === 'boolean' ? v : typeof v === 'string' && /^\{\w+\}$/.test(v) && typeof state[v.slice(1, -1)] === 'boolean' ? state[v.slice(1, -1)] as boolean : num(v as Num, state)] as const);
+  useEffect(() => {
+    if (!node.stateMachine) return;
+    for (const [k, v] of inputs) ref.current?.setInputState(node.stateMachine, k, v);
+  }, [JSON.stringify(inputs)]);
+  const source = typeof src === 'number' ? { source: src } : typeof src === 'string' ? { url: src } : null;
+  if (!source || !RiveView) return null;
+  return <RiveView ref={ref} {...source} artboardName={node.artboard} stateMachineName={node.stateMachine} autoplay fit="contain" style={{ width: node.width ?? size, height: size }} />;
 }
 
 const gradient = (colors?: string[]) => (colors && colors.length > 1 ? `linear-gradient(135deg, ${colors.join(', ')})` : undefined);
@@ -282,7 +327,7 @@ function Button({ node, ctx }: { node: ButtonNode; ctx: Ctx }) {
     <Pressable onPress={onPress} onPressIn={press.onPressIn} onPressOut={press.onPressOut} style={{ flexGrow: 1 }} {...a11y}>
       <Animated.View
         layout={LinearTransition.springify().dampingRatio(0.75)}
-        style={[styles.button, circle && !armed ? { width: 44, height: 44, borderRadius: 22, paddingHorizontal: 0, alignSelf: 'center' } : { paddingHorizontal: 18 }, { backgroundColor: fillColor }, press.style]}
+        style={[styles.button, circle && !armed ? { width: 44, height: 44, borderRadius: 22, paddingHorizontal: 0, alignSelf: 'center' } : { paddingHorizontal: 18 }, { backgroundColor: fillColor, borderColor: tinted ? alpha(base, 0.28) : 'rgba(255,255,255,0.16)' }, !tinted && styles.sheen, press.style]}
       >
         {icon && !armed ? <Icon name={icon} size={circle ? 20 : 17} color={ink} /> : null}
         {label ? <Animated.Text key={label} entering={FadeIn.duration(200)} style={textStyle({ weight: 'bold', color: ink, size: 15 }, theme)} numberOfLines={1}>{label}</Animated.Text> : null}
@@ -423,7 +468,7 @@ function Bar({ value, height, color, track, grow }: { value: number; height: num
   const fillStyle = useAnimatedStyle(() => ({ width: `${p.value * 100}%` }));
   return (
     <View style={{ height, borderRadius: height / 2, backgroundColor: track, overflow: 'hidden', flexGrow: grow ? 1 : undefined }}>
-      <Animated.View style={[{ height, borderRadius: height / 2, backgroundColor: color }, fillStyle]} />
+      <Animated.View style={[{ height, borderRadius: height / 2, backgroundColor: color, experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.32), rgba(255,255,255,0) 70%)' }, fillStyle]} />
     </View>
   );
 }
@@ -461,24 +506,46 @@ function Loop({ effect, children }: { effect: Effect; children: ReactNode }) {
   return <Animated.View style={style}>{children}</Animated.View>;
 }
 
-/** A bar with a marker riding on it; the marker eases to each new value. */
-function Track({ value, marker, height, color, track, grow }: { value: number; marker: string; height: number; color: string; track: string; grow?: boolean }) {
+/** A registered asset (3D image or Lottie) or a built-in icon, at a size. */
+function Mark({ name, size, color }: { name: string; size: number; color: string }) {
+  const src = resolveAsset(name);
+  if (src === name && !/^(https?|file|data):/.test(name)) return <Icon name={name} size={size} color={color} />;
+  if (typeof src === 'object' && LottieView) return <LottieView source={src} autoPlay loop resizeMode="contain" style={{ width: size, height: size }} />;
+  return <Image source={imageSource(src)} style={{ width: size, height: size }} resizeMode="contain" />;
+}
+
+/**
+ * A bar with a marker riding on it — a scooter on its way to your door. The marker eases to each
+ * new value and, when it's an object rather than an icon, bobs gently as if it were moving.
+ */
+function Track({ value, marker, end, markerSize, height, color, track, grow }: { value: number; marker: string; end: string; markerSize?: number; height: number; color: string; track: string; grow?: boolean }) {
   const p = useSharedValue(clamp(value));
+  const bob = useSharedValue(0);
+  const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
-  useEffect(() => { p.value = withSpring(clamp(value), { duration: 1100, dampingRatio: 0.85 }); }, [value]);
-  const markerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: p.value * Math.max(0, width - 22) }] }));
-  const fillStyle = useAnimatedStyle(() => ({ width: `${p.value * 100}%` }));
+  const isAsset = !!marker && resolveAsset(marker) !== marker;
+  const m = markerSize ?? (isAsset ? 30 : 18);
+  const endSize = end ? Math.round(m * 0.8) : 0;
+  useEffect(() => { p.value = withSpring(clamp(value), { duration: 1400, dampingRatio: 0.85 }); }, [value]);
+  useEffect(() => {
+    if (isAsset && !reduced && value < 1) bob.value = withRepeat(withSequence(withTiming(1, { duration: 260 }), withTiming(0, { duration: 260 })), -1);
+    else bob.value = withTiming(0);
+  }, [isAsset, reduced, value >= 1]);
+  const run = Math.max(0, width - m - endSize);
+  const markerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: p.value * run }, { translateY: -bob.value * 1.5 }, { rotate: `${-bob.value * 2}deg` }] }));
+  const fillStyle = useAnimatedStyle(() => ({ width: p.value * run + m / 2 }));
   return (
-    <View style={{ height: 24, justifyContent: 'center', flexGrow: grow ? 1 : undefined }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      <View style={{ height, borderRadius: height / 2, backgroundColor: track, overflow: 'hidden' }}>
-        <Animated.View style={[{ height, backgroundColor: color, borderRadius: height / 2 }, fillStyle]} />
+    <View style={{ height: Math.max(24, m + 4), justifyContent: 'center', flexGrow: grow ? 1 : undefined, alignSelf: grow ? undefined : 'stretch' }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      <View style={{ height, borderRadius: height / 2, backgroundColor: track, overflow: 'hidden', marginRight: endSize ? endSize / 2 : 0 }}>
+        <Animated.View style={[{ height, borderRadius: height / 2, backgroundColor: color, experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.32), rgba(255,255,255,0) 70%)' }, fillStyle]} />
       </View>
+      {end ? <View style={{ position: 'absolute', right: 0 }}><Mark name={end} size={endSize} color={color} /></View> : null}
       {marker ? (
-        <Animated.View style={[{ position: 'absolute', left: 0, width: 22, alignItems: 'center' }, markerStyle]}>
-          <Icon name={marker} size={18} color={color} />
+        <Animated.View style={[{ position: 'absolute', left: 0, width: m, alignItems: 'center' }, markerStyle]}>
+          <Mark name={marker} size={m} color={color} />
         </Animated.View>
       ) : (
-        <Animated.View style={[{ position: 'absolute', left: 4, width: 14, height: 14, borderRadius: 7, backgroundColor: color, borderWidth: 3, borderColor: '#000' }, markerStyle]} />
+        <Animated.View style={[{ position: 'absolute', left: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: color, borderWidth: 3, borderColor: '#000' }, markerStyle]} />
       )}
     </View>
   );
@@ -487,10 +554,68 @@ function Track({ value, marker, height, color, track, grow }: { value: number; m
 function Timer({ to, countUp, style }: { to: number; countUp?: boolean; style: RNTextStyle }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return <Text style={[style, { fontVariant: ['tabular-nums'] }]} maxFontSizeMultiplier={1.3}>{clock(countUp ? now - to : to - now)}</Text>;
+    // Tick on the second boundary of `to`, so every timer on screen flips together and on time.
+    let t: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const n = Date.now();
+      setNow(n);
+      t = setTimeout(tick, 1000 - (((n - to) % 1000) + 1000) % 1000 + 5);
+    };
+    tick();
+    return () => clearTimeout(t);
+  }, [to]);
+  return <Rolling value={clock(countUp ? now - to : to - now)} style={style} />;
+}
+
+/**
+ * Text whose digits roll independently, like iOS's numeric content transition: only the digits
+ * that change move, up when the number grows and down when it shrinks.
+ */
+function Rolling({ value, style }: { value: string; style: RNTextStyle }) {
+  const prev = useRef(value);
+  const up = useRef(true);
+  if (prev.current !== value) {
+    const a = parseFloat(prev.current.replace(/[^0-9.-]/g, ''));
+    const b = parseFloat(value.replace(/[^0-9.-]/g, ''));
+    up.current = !(Number.isFinite(a) && Number.isFinite(b)) || b >= a;
+    prev.current = value;
+  }
+  const chars = [...value];
+  const text = [style, { fontVariant: ['tabular-nums' as const] }];
+  return (
+    <View style={{ flexDirection: 'row' }} accessible accessibilityLabel={value}>
+      {chars.map((c, i) => (
+        // Keyed from the right, so 10 → 9 keeps the ones digit in its slot.
+        <Digit key={chars.length - i} char={c} up={up.current} style={text} />
+      ))}
+    </View>
+  );
+}
+
+function Digit({ char, up, style }: { char: string; up: boolean; style: RNTextStyle[] }) {
+  const reduced = useReducedMotion();
+  const d = up ? 1 : -1;
+  const enter = () => {
+    'worklet';
+    return {
+      initialValues: { opacity: 0, transform: [{ translateY: 14 * d }, { scale: 0.7 }] },
+      animations: { opacity: withTiming(1, { duration: 200 }), transform: [{ translateY: withSpring(0, { duration: 420, dampingRatio: 0.72 }) }, { scale: withSpring(1, { duration: 420, dampingRatio: 0.72 }) }] },
+    };
+  };
+  const exit = () => {
+    'worklet';
+    return {
+      initialValues: { opacity: 1, transform: [{ translateY: 0 }, { scale: 1 }] },
+      animations: { opacity: withTiming(0, { duration: 160 }), transform: [{ translateY: withTiming(-14 * d, { duration: 220 }) }, { scale: withTiming(0.7, { duration: 220 }) }] },
+    };
+  };
+  // Only digits move; separators (: , ₹ %) stay put.
+  const moves = /[0-9]/.test(char) && !reduced;
+  return (
+    <View style={{ overflow: 'hidden' }}>
+      <Animated.Text key={moves ? char : 'static'} entering={moves ? enter : undefined} exiting={moves ? exit : undefined} style={style} maxFontSizeMultiplier={1.3}>{char}</Animated.Text>
+    </View>
+  );
 }
 
 export function clock(ms: number) {
@@ -522,12 +647,19 @@ function Surface({ theme, open, live = false }: { theme: Theme; open: { value: n
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {glass ? (
         Glass && Platform.OS === 'ios' ? <Glass glassEffectStyle="regular" tintColor={alpha('#000000', 0.35)} style={StyleSheet.absoluteFill} />
-          : Blur && Platform.OS !== 'android' ? <><Blur intensity={60} tint="dark" style={StyleSheet.absoluteFill} /><View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(16,16,20,0.45)' }]} /></>
-            : <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(24,24,30,0.86)' }]} />
+          : Blur && (Platform.OS !== 'android' || blurTarget) ? (
+            <>
+              <Blur intensity={Platform.OS === 'android' ? 40 : 60} tint="dark" blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" style={StyleSheet.absoluteFill} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(14,14,18,0.42)' }]} />
+            </>
+          ) : <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(24,24,30,0.88)' }]} />
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.background, experimental_backgroundImage: gradient(theme.gradient) }]} />
       )}
-      {glass ? <View style={[StyleSheet.absoluteFill, { experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 42%)' }]} /> : null}
+      {glass ? (
+        // Lit from above, a faint refraction along the bottom: the edge reads as a thick lens.
+        <View style={[StyleSheet.absoluteFill, { experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.02) 38%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.07))' }]} />
+      ) : null}
       {theme.aura ? (
         <Animated.View style={[{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '75%', experimental_backgroundImage: `linear-gradient(180deg, ${alpha(theme.aura, 0)}, ${alpha(theme.aura, 0.18)} 55%, ${alpha(theme.aura, 0.7)})` }, auraStyle]} />
       ) : null}
@@ -584,14 +716,20 @@ export interface HostProps {
   haptics?: boolean;
   /** Dims the app behind the expanded island; tapping outside collapses it. Default true. */
   dim?: boolean;
+  /**
+   * Android glass: wrap your app in expo-blur's `<BlurTargetView ref={target}>` and pass the ref,
+   * and `material: 'glass'` blurs what's behind the island (Android 12+). iOS and web need nothing.
+   */
+  blurTarget?: RefObject<View | null>;
 }
 
 /**
  * Renders the active islands inside the app. Mount once at the root, above navigation:
  * `<HaloIslandHost />`.
  */
-export function HaloIslandHost({ placement = 'auto', theme, motion, haptics = true, dim = true }: HostProps) {
+export function HaloIslandHost({ placement = 'auto', theme, motion, haptics = true, dim = true, blurTarget: target }: HostProps) {
   hapticsOn = haptics;
+  blurTarget = target;
   const list = useSyncExternalStore(store.subscribe, store.all, store.all);
   const top = list[list.length - 1] ?? null;
   const [shown, setShown] = useState<Active | null>(top);
@@ -925,7 +1063,9 @@ const styles = StyleSheet.create({
   compactRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: ROW_PAD },
   measure: { position: 'absolute', top: -10000, left: 0, opacity: 0 },
   scrim: { backgroundColor: 'rgba(0,0,0,0.38)' },
-  button: { height: 44, borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  button: { height: 44, borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: StyleSheet.hairlineWidth },
+  /** A soft top light, so solid buttons read as pressable objects rather than flat stickers. */
+  sheen: { experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0) 55%)' },
 });
 
 // endregion

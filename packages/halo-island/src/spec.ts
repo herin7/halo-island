@@ -57,6 +57,8 @@ export type IslandNode = NodeBody & {
 
 type NodeBody =
   | { type: 'row' | 'column'; children: IslandNode[]; style?: BoxStyle }
+  /** Children layered on top of each other, centered: a 3D icon inside a ring, a badge on artwork. */
+  | { type: 'stack'; children: IslandNode[]; style?: BoxStyle }
   | { type: 'text'; text: string; style?: TextStyle }
   /**
    * `name`: built-in (see README), an SF Symbol on iOS, or an Android drawable name.
@@ -67,23 +69,29 @@ type NodeBody =
   | { type: 'image'; uri: string; size?: number; width?: number; radius?: number; fit?: 'cover' | 'contain'; glow?: boolean }
   | { type: 'ring'; value: Num; size?: number; thickness?: number; color?: Color; track?: Color }
   | { type: 'bar'; value: Num; height?: number; color?: Color; track?: Color }
-  /** A bar with a marker riding along it at `value` — a rider heading to your door. No marker draws a dot. */
-  | { type: 'track'; value: Num; marker?: string; height?: number; color?: Color; track?: Color }
   /**
-   * A Rive file (.riv) by URL or `asset(require(...))`. `trigger` fires that state machine input
-   * whenever its filled value changes — a character that reacts to state. Needs `rive: true` in the
+   * A bar with a marker riding along it at `value` — a rider heading to your door. `marker` is an
+   * icon name or a registered asset (a 3D image or a Lottie that plays while it moves); none draws
+   * a dot. `end` puts an icon or asset at the finish line.
+   */
+  | { type: 'track'; value: Num; marker?: string; end?: string; markerSize?: number; height?: number; color?: Color; track?: Color }
+  /**
+   * A Rive file (.riv): a name from `registerAssets`, a URL, or `asset(require(...))`. `trigger`
+   * names a state machine trigger to fire whenever its filled value changes; `inputs` sets number
+   * and boolean inputs from state — a character that reacts to the activity. In-app it needs
+   * `rive-react-native`; the Android overlay needs `rive: true` in the
    * config plugin.
    */
-  | { type: 'rive'; uri: string; size?: number; width?: number; artboard?: string; stateMachine?: string; trigger?: string }
-  /** Lottie from a URL. Needs `lottie-react-native` in the app; renders nothing without it. */
-  | { type: 'lottie'; uri: string; size?: number; loop?: boolean }
+  | { type: 'rive'; uri: string; size?: number; width?: number; artboard?: string; stateMachine?: string; trigger?: string; inputs?: Record<string, Num | boolean> }
+  /** Lottie: a name from `registerAssets`, or a URL. Needs `lottie-react-native`; renders nothing without it. */
+  | { type: 'lottie'; uri: string; size?: number; width?: number; loop?: boolean; speed?: number }
   /**
    * Rounded bars, each 0–1: a histogram (UV, speed), timer ticks, or `animate` for a live waveform.
    * `values` is an array or a comma list like '{uv}'. Bars past `active` use the track color.
    */
   | { type: 'bars'; values: Num[] | string; active?: Num; height?: number; gap?: number; color?: Color; track?: Color; animate?: boolean }
   /** A shallow arc across the width — sun path, gauge, journey — with a glowing marker at `value`. */
-  | { type: 'arc'; value: Num; height?: number; thickness?: number; colors?: Color[]; track?: Color; glow?: boolean }
+  | { type: 'arc'; value: Num; height?: number; thickness?: number; colors?: Color[]; track?: Color; glow?: boolean; marker?: string; markerSize?: number }
   /** Stages as icon nodes on a line. `value` counts reached stages (2.5 = halfway to the third). */
   | { type: 'timeline'; value: Num; icons: string[]; size?: number; color?: Color; track?: Color; ink?: Color }
   /** `count` segments; `value` is how many are done (fractions fill part of one). Order stages, journeys, onboarding. */
@@ -206,6 +214,9 @@ const isNode = (v: unknown): v is IslandNode => typeof v === 'object' && v !== n
 export function row(style: BoxStyle | IslandNode, ...children: Kids): IslandNode {
   return isNode(style) ? { type: 'row', children: kids([style, ...children]) } : { type: 'row', style, children: kids(children) };
 }
+export function stack(style: BoxStyle | IslandNode, ...children: Kids): IslandNode {
+  return isNode(style) ? { type: 'stack', children: kids([style, ...children]) } : { type: 'stack', style, children: kids(children) };
+}
 export function column(style: BoxStyle | IslandNode, ...children: Kids): IslandNode {
   return isNode(style) ? { type: 'column', children: kids([style, ...children]) } : { type: 'column', style, children: kids(children) };
 }
@@ -255,12 +266,12 @@ export const chips = (bind: string, options: string[], opts?: { values?: string[
 export const slider = (bind: string, opts?: { icon?: string; color?: Color; track?: Color; height?: number }): IslandNode => ({ type: 'slider', bind, ...opts });
 export const toggle = (bind: string, label: string, opts?: { icon?: string; color?: Color }): IslandNode => ({ type: 'toggle', bind, label, ...opts });
 export const bars = (values: Num[] | string, opts?: { active?: Num; height?: number; gap?: number; color?: Color; track?: Color; animate?: boolean }): IslandNode => ({ type: 'bars', values, ...opts });
-export const arc = (value: Num, opts?: { height?: number; thickness?: number; colors?: Color[]; track?: Color; glow?: boolean }): IslandNode => ({ type: 'arc', value, ...opts });
+export const arc = (value: Num, opts?: { height?: number; thickness?: number; colors?: Color[]; track?: Color; glow?: boolean; marker?: string; markerSize?: number }): IslandNode => ({ type: 'arc', value, ...opts });
 export const timeline = (value: Num, icons: string[], opts?: { size?: number; color?: Color; track?: Color; ink?: Color }): IslandNode => ({ type: 'timeline', value, icons, ...opts });
 export const spacer = (size?: number): IslandNode => ({ type: 'spacer', size });
-export const track = (value: Num, marker?: string, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'track', value, marker, ...opts });
-export const lottie = (uri: string, opts?: { size?: number; loop?: boolean }): IslandNode => ({ type: 'lottie', uri, ...opts });
-export const rive = (uri: string, opts?: { size?: number; width?: number; artboard?: string; stateMachine?: string; trigger?: string }): IslandNode => ({ type: 'rive', uri, ...opts });
+export const track = (value: Num, marker?: string, opts?: { end?: string; markerSize?: number; height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'track', value, marker, ...opts });
+export const lottie = (uri: string, opts?: { size?: number; width?: number; loop?: boolean; speed?: number }): IslandNode => ({ type: 'lottie', uri, ...opts });
+export const rive = (uri: string, opts?: { size?: number; width?: number; artboard?: string; stateMachine?: string; trigger?: string; inputs?: Record<string, Num | boolean> }): IslandNode => ({ type: 'rive', uri, ...opts });
 /** Adds looping motion: `fx(text('LIVE'), 'pulse')`. */
 export const fx = (node: IslandNode, effect: Effect): IslandNode => ({ ...node, effect });
 /** Shows `node` only while `state[key]` is set: `when('driver', text('{driver}'))`. */

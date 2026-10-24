@@ -130,7 +130,8 @@ class HaloIslandModule : Module() {
       // The bounding rect spans the whole inset band; the cutout path is the actual hole (API 31+).
       val hole = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         cutout.cutoutPath?.let { path ->
-          android.graphics.RectF().also { path.computeBounds(it, true) }.takeIf { !it.isEmpty && android.graphics.RectF(band).contains(it) }
+          android.graphics.RectF().also { path.computeBounds(it, true) }
+            .takeIf { !it.isEmpty && it.top < band.bottom && it.height() <= band.height() }
         }
       } else null
       val rect = hole ?: android.graphics.RectF(band)
