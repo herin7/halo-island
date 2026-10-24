@@ -189,8 +189,7 @@ halo-island/
 ├── packages/halo-island/   The library: spec, renderer, hooks, Kotlin module, config plugin
 ├── example/                Showcase app (Expo): catalog of 16 islands, Island OS, sync demo
 ├── website/                Docs site with a live in-browser island
-├── tools/island-bridge/    Claude Code → island bridge (no dependencies)
-└── docs/design/            The design brief every island is checked against
+└── tools/island-bridge/    Claude Code → island bridge (no dependencies)
 ```
 
 ## ⚠️ Honest Limits

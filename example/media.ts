@@ -1,6 +1,6 @@
 /**
  * The showcase's named assets, so templates stay plain JSON: icon('moped'), lottie('lottie:confetti').
- * Glyphs are Phosphor (MIT); Lottie credits in assets/CREDITS.md.
+ * Glyphs are Phosphor (MIT); Lottie credits are in the root README.
  */
 import { registerAssets, registerIcons } from 'halo-island';
 

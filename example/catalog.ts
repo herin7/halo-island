@@ -5,7 +5,6 @@
  * Layout follows Apple's Live Activity anatomy: compact is one glyph and one value; expanded is
  * leading mark · title · trailing value, then at most one visual and one row of controls.
  * Characters appear only where they carry meaning (the quiz and focus pet react to you).
- * Design rules: docs/design/brief.md.
  */
 import {
   IslandNode, IslandState, IslandTemplate,

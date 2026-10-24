@@ -6,3 +6,6 @@ example/ios/
 *.log
 .DS_Store
 docs/design/refs/
+# Local notes stay out of the repo: README.md is the only markdown we publish.
+*.md
+!README.md
