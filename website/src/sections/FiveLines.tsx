@@ -2,7 +2,7 @@ import type { IslandState } from 'halo-island';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 
-import { scenarios } from '../../../example/showcase';
+import { scenarios } from '../../../example/catalog';
 import { Code } from '../components/Code';
 import { Phone } from '../components/Phone';
 import { Island } from '../island/Island';
@@ -13,17 +13,17 @@ const swiggy = scenarios.find((s) => s.id === 'swiggy')!;
 const SRC = `import { island, useIslandAction } from 'halo-island'
 
 const order = island(swiggy)
-const live = order.start({ eta: 32, stage: 1 })
+const live = order.start({ eta: 32, progress: 0 })
 live.update({ eta: 9, rider: 'Ravi' }, { alert: true })
 useIslandAction('call', () => dial(rider))
 live.end()`;
 
 /** What each line does to the island, so hovering the code drives it. */
 const LINES: Record<number, { state?: IslandState; open?: boolean; gone?: boolean; note: string }> = {
-  2: { state: { status: 'Order confirmed', items: 'Meghana Foods · 2 items', eta: 32, stage: 1 }, open: false, note: 'island(template) — nothing on screen yet, just the design' },
-  3: { state: { status: 'Order confirmed', items: 'Meghana Foods · 2 items', eta: 32, stage: 1 }, open: false, note: 'start(state) — appears on every surface the phone has' },
-  4: { state: { status: 'Ravi is on the way', items: 'Meghana Foods · 2 items', eta: 9, stage: 3.2, rider: 'Ravi' }, open: true, note: 'update(patch, { alert }) — only state travels; alert pops it open' },
-  5: { state: { status: 'Ravi is on the way', items: 'Meghana Foods · 2 items', eta: 9, stage: 3.2, rider: 'Ravi' }, open: true, note: 'useIslandAction — buttons work from the island, lock screen, overlay. Tap “Call Ravi”.' },
+  2: { state: { status: 'Order confirmed', items: 'Meghana Foods · 2 items', eta: 32, progress: 0.04, vehicle: 'cooking-pot' }, open: false, note: 'island(template) — nothing on screen yet, just the design' },
+  3: { state: { status: 'Order confirmed', items: 'Meghana Foods · 2 items', eta: 32, progress: 0.04, vehicle: 'cooking-pot' }, open: false, note: 'start(state) — appears on every surface the phone has' },
+  4: { state: { status: 'Ravi is 2 km away', items: 'Meghana Foods · 2 items', eta: 9, progress: 0.66, rider: 'Ravi', vehicle: 'moped' }, open: true, note: 'update(patch, { alert }) — only state travels; alert pops it open' },
+  5: { state: { status: 'Ravi is 2 km away', items: 'Meghana Foods · 2 items', eta: 9, progress: 0.66, rider: 'Ravi', vehicle: 'moped' }, open: true, note: 'useIslandAction — buttons work from the island, lock screen, overlay. Tap “Call Ravi”.' },
   6: { gone: true, note: 'end() — gone everywhere, at once' },
 };
 const ORDER = [3, 4, 5, 6, 2];

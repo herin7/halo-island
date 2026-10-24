@@ -7,13 +7,13 @@ import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'motion/
 import { CSSProperties, KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { Ctx, Node } from './nodes';
-import { Theme, gradient, springOf, themeOf } from './util';
+import { Theme, alpha, gradient, springOf, themeOf } from './util';
 
 const ROW = 37;
 const ROW_PAD = 14;
-const INSET = 24;
+const INSET = 22;
 const TOP = 10;
-const BOTTOM = 24;
+const BOTTOM = 22;
 
 export interface IslandProps {
   template: IslandTemplate;
@@ -105,7 +105,13 @@ export function Island({ template, state, id = 'island', expanded, onExpandedCha
         ...style,
       } as CSSProperties}
     >
-      {theme.aura ? <motion.div className="hi-aura" aria-hidden initial={false} animate={{ opacity: open ? 0.7 : 0 }} transition={{ duration: 0.5 }} style={{ background: `radial-gradient(70% 60% at 50% 115%, ${theme.aura}, transparent 70%)` }} /> : null}
+      {/* Glass: lit from above, a faint refraction along the bottom, so the edge reads as a thick lens. */}
+      {theme.material === 'glass' ? <div className="hi-lens" aria-hidden /> : null}
+      {theme.aura ? (
+        <motion.div className="hi-aura" aria-hidden initial={false} animate={{ opacity: open ? 1 : 0 }} transition={{ duration: 0.5 }}>
+          <div className={open ? 'hi-breathe' : undefined} style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, ${alpha(theme.aura, 0)} 25%, ${alpha(theme.aura, 0.16)} 62%, ${alpha(theme.aura, 0.62)})` }} />
+        </motion.div>
+      ) : null}
       <AnimatePresence initial={false}>
         <Stage key={id} template={template} ctx={ctx} open={open} body={body} bodyKey={screen ?? '__main'} dir={dir.current} gap={gap} width={width} theme={theme} spring={spring} onSize={setSize} onHeader={() => open && onExpandedChange?.(false)} />
       </AnimatePresence>

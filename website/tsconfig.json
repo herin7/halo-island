@@ -16,5 +16,5 @@
       "@halo/icons": ["../packages/halo-island/src/icons.ts"]
     }
   },
-  "include": ["src", "../example/showcase.ts", "../example/brands.ts"]
+  "include": ["src", "../example/catalog.ts", "../example/brands.ts"]
 }

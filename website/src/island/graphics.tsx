@@ -8,6 +8,8 @@ import { animate, motion, useMotionValue, useReducedMotion, useSpring, useTransf
 import { CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { onPointer, pointer } from './look';
+import { resolveAsset } from './media';
+import { Lottie, Rive } from './players';
 import { alpha, clamp } from './util';
 
 /** Element width, kept current. Graphics that span their parent need it for geometry. */
@@ -65,17 +67,40 @@ export function Bar({ value, height, color, track, grow }: { value: number; heig
   );
 }
 
-export function Track({ value, marker, height, color, track, grow }: { value: number; marker: string; height: number; color: string; track: string; grow?: boolean }) {
+/** A registered asset (Lottie, Rive, image) or a named icon, at a size. */
+export function Mark({ name, size, color }: { name: string; size: number; color: string }) {
+  const asset = resolveAsset(name);
+  if (!asset) return <Icon name={name} size={size} color={color} />;
+  if (asset.kind === 'lottie') return <Lottie src={asset.url} size={size} />;
+  if (asset.kind === 'rive') return <Rive src={asset.url} size={size} />;
+  return <img src={asset.url} alt="" width={size} height={size} draggable={false} decoding="async" style={{ width: size, height: size, objectFit: 'contain', display: 'block', flexShrink: 0, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.5))' }} />;
+}
+export const isAsset = (name: string) => !!resolveAsset(name);
+
+/**
+ * A bar with a marker riding on it — a scooter on its way to your door. The marker eases to each
+ * value and, when it's an object rather than an icon, bobs as if it were moving. `end` waits at
+ * the finish line; `flip` mirrors a marker drawn facing left.
+ */
+export function Track({ value, marker, end, markerSize, flip, height, color, track, puck, grow }: { value: number; marker: string; end: string; markerSize?: number; flip?: boolean; height: number; color: string; track: string; puck: string; grow?: boolean }) {
   const [ref, w] = useWidth<HTMLDivElement>();
+  const reduced = useReducedMotion();
   const v = clamp(value);
+  const object = !!marker && isAsset(marker);
+  const m = markerSize ?? (object ? 30 : 18);
+  const endSize = end ? Math.round(m * 0.8) : 0;
+  const run = Math.max(0, w - m - endSize);
+  const ride = { type: 'spring', visualDuration: 1.2, bounce: 0.12 } as const;
   return (
-    <div ref={ref} style={{ height: 24, position: 'relative', display: 'flex', alignItems: 'center', flexGrow: grow ? 1 : undefined, alignSelf: 'stretch' }}>
-      <div style={{ height, borderRadius: height / 2, background: track, overflow: 'hidden', width: '100%' }}>
-        <motion.div style={{ height, background: color, borderRadius: height / 2 }} initial={false} animate={{ width: `${v * 100}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} />
+    <div ref={ref} style={{ height: Math.max(24, m + 4), position: 'relative', display: 'flex', alignItems: 'center', flexGrow: grow ? 1 : undefined, alignSelf: 'stretch' }}>
+      <div style={{ height, borderRadius: height / 2, background: track, overflow: 'hidden', flex: 1, marginRight: endSize / 2 }}>
+        <motion.div style={{ height, background: color, borderRadius: height / 2 }} initial={false} animate={{ width: v * run + m / 2 }} transition={ride} />
       </div>
-      <motion.div initial={false} animate={{ x: v * Math.max(0, w - 22) }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-        style={{ position: 'absolute', left: 0, width: 22, height: 22, display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>
-        {marker ? (ICONS[marker] ? <Icon name={marker} size={18} color={color} /> : marker) : <span style={{ width: 14, height: 14, borderRadius: 7, background: color, border: '3px solid #000' }} />}
+      {end ? <span style={{ position: 'absolute', right: 0 }}><Mark name={end} size={endSize} color={color} /></span> : null}
+      <motion.div initial={false} animate={{ x: v * run }} transition={ride} style={{ position: 'absolute', left: 0, width: m, display: 'grid', placeItems: 'center', ...(object ? null : { height: m + 8, borderRadius: (m + 8) / 2, background: puck }) }}>
+        <span className={object && v < 1 && !reduced ? 'hi-bob' : undefined} style={{ display: 'block', transform: flip ? 'scaleX(-1)' : undefined }}>
+          {marker ? <Mark name={marker} size={m} color={color} /> : <span style={{ display: 'block', width: 14, height: 14, borderRadius: 7, background: color, border: '3px solid #000' }} />}
+        </span>
       </motion.div>
     </div>
   );
@@ -159,7 +184,7 @@ export function Sparkline({ values, height, color, fill, thickness }: { values: 
   );
 }
 
-export function Arc({ value, height, thickness, colors, track, glow }: { value: number; height: number; thickness: number; colors: string[]; track: string; glow: boolean }) {
+export function Arc({ value, height, thickness, colors, track, glow, marker, markerSize = 28, accent }: { value: number; height: number; thickness: number; colors: string[]; track: string; glow: boolean; marker?: string; markerSize?: number; accent: string }) {
   const [ref, w] = useWidth<HTMLDivElement>();
   const id = useId();
   const p = useSpring(clamp(value), { stiffness: 120, damping: 22 });
@@ -173,9 +198,13 @@ export function Arc({ value, height, thickness, colors, track, glow }: { value: 
   const offset = useTransform(p, (t) => len * (1 - t));
   const mx = useTransform(p, (t) => at(t)[0]);
   const my = useTransform(p, (t) => at(t)[1]);
+  // An object riding the arc (a plane) follows the curve and tilts along its slope.
+  const rx = useTransform(p, (t) => at(t)[0] - markerSize / 2);
+  const ry = useTransform(p, (t) => at(t)[1] - markerSize / 2);
+  const tilt = useTransform(p, (t) => (Math.atan2(2 * (1 - t) * (cy - y0) + 2 * t * (y0 - cy), 2 * (1 - t) * (cx - x0) + 2 * t * (x1 - cx)) * 180) / Math.PI);
   const last = colors[colors.length - 1];
   return (
-    <div ref={ref} style={{ height, alignSelf: 'stretch' }}>
+    <div ref={ref} style={{ height, alignSelf: 'stretch', position: 'relative' }}>
       {w ? (
         <svg width={w} height={height} aria-hidden style={{ display: 'block', overflow: 'visible' }}>
           <defs>
@@ -186,8 +215,13 @@ export function Arc({ value, height, thickness, colors, track, glow }: { value: 
           <path d={d} stroke={track} strokeWidth={thickness} fill="none" strokeLinecap="round" strokeDasharray="0.1 8" />
           <motion.path d={d} stroke={`url(#${id})`} strokeWidth={thickness} fill="none" strokeLinecap="round" strokeDasharray={`${len} ${len}`} style={{ strokeDashoffset: offset }} />
           {glow ? <motion.circle cx={mx} cy={my} r={thickness * 3.4} fill={last} opacity={0.22} /> : null}
-          <motion.circle cx={mx} cy={my} r={thickness * 1.5} fill="#FFFFFF" stroke={last} strokeWidth={thickness * 0.8} />
+          {marker ? null : <motion.circle cx={mx} cy={my} r={thickness * 1.5} fill="#FFFFFF" stroke={last} strokeWidth={thickness * 0.8} />}
         </svg>
+      ) : null}
+      {w && marker ? (
+        <motion.div style={{ position: 'absolute', left: 0, top: 0, width: markerSize, height: markerSize, x: rx, y: ry, rotate: tilt }}>
+          <Mark name={marker} size={markerSize} color={accent} />
+        </motion.div>
       ) : null}
     </div>
   );

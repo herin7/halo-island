@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 
-import SHOWCASE from '../../../example/showcase.ts?raw';
-import { Scenario, scenarios } from '../../../example/showcase';
+import SHOWCASE from '../../../example/catalog.ts?raw';
+import { Group, Scenario, groups, scenarios } from '../../../example/catalog';
 import { Code, CopyButton } from '../components/Code';
 import { Phone } from '../components/Phone';
 import { Icon, useWidth } from '../island/graphics';
@@ -10,7 +10,9 @@ import { Island } from '../island/Island';
 import { useStory } from '../story';
 import { Head, Rise, useInView } from '../ui';
 
-/** The scenario's literal source from example/showcase.ts — what you'd copy into your app. */
+const TODAY = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).replace(',', '');
+
+/** The scenario's literal source from example/catalog.ts — what you'd copy into your app. */
 function sourceOf(id: string) {
   const at = SHOWCASE.indexOf(`id: '${id}'`);
   if (at < 0) return '';
@@ -23,6 +25,9 @@ export function Gallery() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<'phone' | 'code'>('phone');
   const current = scenarios.find((s) => s.id === openId) ?? null;
+  const [group, setGroup] = useState<Group | 'All'>('All');
+  const tabs = (['All', ...groups.filter((g) => scenarios.some((s) => s.group === g))] as const);
+  const list = group === 'All' ? scenarios : scenarios.filter((s) => s.group === group);
   // The grid plays itself: one card at a time opens and runs its story, until you hover.
   const grid = useRef<HTMLDivElement>(null);
   const inView = useInView(grid, '-15% 0px');
@@ -32,19 +37,29 @@ export function Gallery() {
     if (!inView || hovering || openId) return setAuto(-1);
     let i = 0;
     setAuto(0);
-    const t = setInterval(() => setAuto(++i % scenarios.length), 4200);
+    const t = setInterval(() => setAuto(++i % list.length), 4200);
     return () => clearInterval(t);
-  }, [inView, hovering, openId]);
+  }, [inView, hovering, openId, group]);
   return (
     <section className="section" id="gallery" style={{ paddingTop: 40 }}>
       <div className="wrap">
-        <Head eyebrow="Gallery" title={<>Real apps, <em>real stories.</em></>} lede={`${scenarios.length} live activities built from the same twenty primitives. Hover to open one; play its story on a phone; steal the template.`} />
-        <div className="gallery" ref={grid} onPointerEnter={(e) => e.pointerType === 'mouse' && setHovering(true)} onPointerLeave={() => setHovering(false)}>
-          {scenarios.map((s, i) => (
-            <Rise key={s.id} delay={(i % 3) * 0.06}>
-              <Card scenario={s} auto={auto === i} onPlay={() => { setTab('phone'); setOpenId(s.id); }} onCode={() => { setTab('code'); setOpenId(s.id); }} />
-            </Rise>
+        <Head eyebrow="Gallery" title={<>Real apps, <em>real stories.</em></>} lede={`${scenarios.length} live activities: food, rides, lessons, limits, meds, raids. Each is plain JSON, laid out like Apple’s own Live Activities. Hover one, play its story, tap its buttons, steal the template.`} />
+        <div className="tabs-row" role="tablist" aria-label="Filter by use case">
+          {tabs.map((t) => (
+            <button key={t} type="button" role="tab" aria-selected={group === t} className="tab" onClick={() => setGroup(t)}>
+              {group === t ? <motion.span layoutId="gal-tab" className="tab-bg" transition={{ type: 'spring', stiffness: 500, damping: 38 }} /> : null}
+              <span>{t}</span>
+            </button>
           ))}
+        </div>
+        <div className="gallery" ref={grid} onPointerEnter={(e) => e.pointerType === 'mouse' && setHovering(true)} onPointerLeave={() => setHovering(false)}>
+          <AnimatePresence mode="popLayout" initial={false}>
+            {list.map((s, i) => (
+              <motion.div key={s.id} layout initial={{ opacity: 0, scale: 0.94, filter: 'blur(8px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }} exit={{ opacity: 0, scale: 0.94 }} transition={{ type: 'spring', stiffness: 260, damping: 30 }}>
+                <Card scenario={s} auto={auto === i} onPlay={() => { setTab('phone'); setOpenId(s.id); }} onCode={() => { setTab('code'); setOpenId(s.id); }} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
           <Rise className="card card-cta">
             <span className="eyebrow">Yours next</span>
             <div>
@@ -64,17 +79,25 @@ function Card({ scenario, auto, onPlay, onCode }: { scenario: Scenario; auto: bo
   const [hover, setHover] = useState(false);
   const [tapped, setTapped] = useState(false);
   const open = hover || tapped || auto;
-  const { state } = useStory(scenario, open, { delay: 300 });
+  const { state, act, patch } = useStory(scenario, open, { delay: 300 });
   const [ref, w] = useWidth<HTMLDivElement>();
-  const accent = scenario.template.theme?.accent ?? '#fff';
   return (
-    <article className="card" onPointerEnter={(e) => e.pointerType === 'mouse' && setHover(true)} onPointerLeave={() => setHover(false)} style={{ ['--c' as string]: accent }}>
+    <article className={`card${open ? ' is-open' : ''}`} onPointerEnter={(e) => e.pointerType === 'mouse' && setHover(true)} onPointerLeave={() => setHover(false)} style={{ ['--c' as string]: scenario.color }}>
       <div className="card-stage" ref={ref}>
         <div className="card-glow" />
-        {w ? <Island template={scenario.template} state={state} expanded={open} onExpandedChange={setTapped} width={Math.min(371, w - 20)} gap={40} label={`${scenario.title}: ${scenario.about}`} /> : null}
+        {/* A phone's top edge: the island lives where it really would, and grows down when it opens. */}
+        <div className="card-status" aria-hidden><span /><span className="card-batt" /></div>
+        {/* Lock screen under the island; it steps back when the island opens over it. */}
+        <motion.div className="card-clock" aria-hidden initial={false} animate={open ? { opacity: 0, y: 24, filter: 'blur(6px)' } : { opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ type: 'spring', stiffness: 260, damping: 28 }}>
+          <span className="card-date">{TODAY}</span>
+          <span className="card-time">9:41</span>
+        </motion.div>
+        <div className="card-island" style={{ top: 14 }}>
+          {w ? <Island template={scenario.template} state={state} expanded={open} onExpandedChange={setTapped} onState={patch} onAction={act} width={Math.min(371, w - 20)} gap={40} label={`${scenario.title}: ${scenario.about}`} /> : null}
+        </div>
       </div>
       <div className="card-foot">
-        <div className="grow"><h3>{scenario.title}</h3><p>{scenario.about}</p></div>
+        <div className="grow"><h3>{scenario.title} <span className="card-group">{scenario.group}</span></h3><p>{scenario.about}</p></div>
         <button type="button" className="chip-btn" onClick={onCode} aria-label={`View ${scenario.title} template code`}>Code</button>
         <button type="button" className="chip-btn solid" onClick={onPlay} aria-label={`Play the ${scenario.title} story`}><Icon name="play" size={14} color="currentColor" />Play</button>
       </div>
@@ -84,7 +107,7 @@ function Card({ scenario, auto, onPlay, onCode }: { scenario: Scenario; auto: bo
 
 function Modal({ scenario, tab, setTab, onClose }: { scenario: Scenario; tab: 'phone' | 'code'; setTab: (t: 'phone' | 'code') => void; onClose: () => void }) {
   const [open, setOpen] = useState(false);
-  const { state, replay } = useStory(scenario, true, { onAlert: () => setOpen(true), loopAfter: 3000, delay: 1200 });
+  const { state, replay, act, patch } = useStory(scenario, true, { onAlert: () => setOpen(true), loopAfter: scenario.story.length ? 3000 : undefined, delay: 1200 });
   const close = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const src = sourceOf(scenario.id);
@@ -107,7 +130,7 @@ function Modal({ scenario, tab, setTab, onClose }: { scenario: Scenario; tab: 'p
     document.body.style.overflow = 'hidden';
     return () => { clearTimeout(t); window.removeEventListener('keydown', key); document.body.style.overflow = ''; opener?.focus({ preventScroll: true }); };
   }, []);
-  const accent = scenario.template.theme?.accent ?? '#fff';
+  const accent = scenario.color;
   return (
     <motion.div className="modal-back" onClick={(e) => e.target === e.currentTarget && onClose()} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <motion.div ref={dialog} className="modal" role="dialog" aria-modal="true" aria-label={`${scenario.title} live activity`} data-tab={tab} style={{ ['--c' as string]: accent }}
@@ -117,7 +140,7 @@ function Modal({ scenario, tab, setTab, onClose }: { scenario: Scenario; tab: 'p
             <Phone label={`${scenario.title} story playing on a phone`}>
               <div className="wall" style={{ background: `radial-gradient(90% 55% at 50% 0%, ${accent}33, #000 70%)` }} />
               <div className="phone-island">
-                <Island template={scenario.template} state={state} expanded={open} onExpandedChange={setOpen} width={371} gap={44} />
+                <Island template={scenario.template} state={state} expanded={open} onExpandedChange={setOpen} onState={patch} onAction={act} width={371} gap={44} />
               </div>
               <div className="screen-app" style={{ paddingTop: 330 }} aria-hidden>
                 <div className="ui-title">{scenario.title}</div>

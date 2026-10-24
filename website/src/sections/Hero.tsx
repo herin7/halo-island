@@ -2,10 +2,10 @@ import { IslandState, IslandTemplate, button, column, pet, row, text } from 'hal
 import { motion, useReducedMotion } from 'motion/react';
 import { PointerEvent, useEffect, useRef, useState } from 'react';
 
-import { scenarios } from '../../../example/showcase';
+import { scenarios } from '../../../example/catalog';
 import { CopyButton } from '../components/Code';
 import { Island } from '../island/Island';
-import { storyLength } from '../story';
+import { patchOf, storyLength } from '../story';
 import { GitHubIcon, useViewport } from '../ui';
 
 const GREY = '#8E8E93';
@@ -46,7 +46,7 @@ export function Hero() {
 
   const showingPet = idx === -1 || !!react;
   const scenario = idx >= 0 ? scenarios[idx] : null;
-  const accent = showingPet || !scenario ? HALO : scenario.template.theme?.accent ?? HALO;
+  const accent = showingPet || !scenario ? HALO : scenario.color;
 
   // The show: pet, then a real live activity with its story, then pet again…
   useEffect(() => {
@@ -66,9 +66,10 @@ export function Hero() {
       const roomy = window.innerWidth >= 900;
       let t = OPEN_AT;
       if (roomy || !sc.story.some(([, , alert]) => alert)) at(t, () => setOpen(true));
-      for (const [delay, patch, alert] of sc.story) {
+      for (const beat of sc.story) {
+        const [delay, , alert] = beat;
         t += delay;
-        at(t, () => setState((s) => ({ ...s, ...patch })));
+        at(t, () => setState((s) => ({ ...s, ...patchOf(beat, s) })));
         if (!roomy && alert) { at(t, () => setOpen(true)); at(t + 2400, () => setOpen(false)); }
       }
       t += roomy ? HOLD_OPEN : 1400;
@@ -193,3 +194,4 @@ function Reveal({ text: value, delay, reduced }: { text: string; delay: number; 
     </span>
   );
 }
+

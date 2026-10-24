@@ -1,7 +1,7 @@
 import { fill } from 'halo-island';
 import { useRef, useState } from 'react';
 
-import { scenarios } from '../../../example/showcase';
+import { scenarios } from '../../../example/catalog';
 import { Phone } from '../components/Phone';
 import { Icon } from '../island/graphics';
 import { Island } from '../island/Island';
@@ -30,7 +30,7 @@ export function Surfaces() {
           <figure>
             <Phone label="iPhone: Dynamic Island and a Lock Screen Live Activity">
               <div className="wall" style={{ background: 'linear-gradient(180deg, #1a1430, #050208 60%)' }} />
-              <div className="lock-date">Friday 24 October</div>
+              <div className="lock-date">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).replace(',', '')}</div>
               <div className="lock-time">9:41</div>
               <div className="phone-island"><Island template={swiggy.template} state={state} expanded={open} onExpandedChange={setOpen} width={371} gap={44} /></div>
               <div className="lock">
