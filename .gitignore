@@ -5,3 +5,4 @@ example/android/
 example/ios/
 *.log
 .DS_Store
+docs/design/refs/

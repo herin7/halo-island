@@ -5,14 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.haloisland.example"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#05050A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -36,13 +36,17 @@
         "expo-font",
         {
           "fonts": [
-            "../node_modules/@expo-google-fonts/manrope/500Medium/Manrope_500Medium.ttf",
-            "../node_modules/@expo-google-fonts/manrope/600SemiBold/Manrope_600SemiBold.ttf",
-            "../node_modules/@expo-google-fonts/manrope/700Bold/Manrope_700Bold.ttf",
-            "../node_modules/@expo-google-fonts/manrope/800ExtraBold/Manrope_800ExtraBold.ttf"
+            "../node_modules/@expo-google-fonts/inter-tight/400Regular/InterTight_400Regular.ttf",
+            "../node_modules/@expo-google-fonts/inter-tight/500Medium/InterTight_500Medium.ttf",
+            "../node_modules/@expo-google-fonts/inter-tight/600SemiBold/InterTight_600SemiBold.ttf",
+            "../node_modules/@expo-google-fonts/inter-tight/700Bold/InterTight_700Bold.ttf",
+            "../node_modules/@expo-google-fonts/inter-tight/800ExtraBold/InterTight_800ExtraBold.ttf",
+            "../node_modules/@expo-google-fonts/instrument-serif/400Regular/InstrumentSerif_400Regular.ttf",
+            "../node_modules/@expo-google-fonts/instrument-serif/400Regular_Italic/InstrumentSerif_400Regular_Italic.ttf"
           ]
         }
       ]
-    ]
+    ],
+    "backgroundColor": "#05050A"
   }
 }

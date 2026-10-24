@@ -1,6 +1,6 @@
 // HOST v2 READY — in-app renderer: JS-drawn graphics, screens, inputs, pet, glass, bubble.
 import { requireNativeView } from 'expo';
-import { ComponentType, ReactNode, RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { ComponentRef, ComponentType, ReactNode, RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dimensions, Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useColorScheme, useWindowDimensions } from 'react-native';
 import Animated, { Easing, FadeIn, FadeInDown, FadeOut, FadeOutUp, LinearTransition, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
@@ -20,9 +20,9 @@ const LottieView = optional(() => require('lottie-react-native').default as Comp
 type RiveHandle = { fireState(stateMachine: string, input: string): void; setInputState(stateMachine: string, input: string, value: number | boolean): void };
 const RiveView = optional(() => require('rive-react-native').default as ComponentType<{ ref?: React.Ref<RiveHandle>; source?: number | { uri: string }; url?: string; artboardName?: string; stateMachineName?: string; autoplay?: boolean; fit?: string; style?: ViewStyle }>);
 const Haptics = optional(() => require('expo-haptics') as typeof import('expo-haptics'));
-const Blur = optional(() => require('expo-blur').BlurView as ComponentType<{ intensity?: number; tint?: string; blurTarget?: RefObject<View | null>; blurMethod?: string; style?: ViewStyle }>);
+const Blur = optional(() => require('expo-blur').BlurView as ComponentType<{ intensity?: number; tint?: string; blurTarget?: RefObject<ComponentRef<typeof View> | null>; blurMethod?: string; style?: ViewStyle }>);
 /** Android blurs only what's inside a BlurTargetView; the host gets that view's ref. */
-let blurTarget: RefObject<View | null> | undefined;
+let blurTarget: RefObject<ComponentRef<typeof View> | null> | undefined;
 const Glass = optional(() => {
   const g = require('expo-glass-effect');
   return g.isLiquidGlassAvailable?.() ? (g.GlassView as ComponentType<{ glassEffectStyle?: string; tintColor?: string; style?: ViewStyle }>) : null;
@@ -133,7 +133,8 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     }
     case 'text': {
       const value = fill(node.text, state);
-      const style = textStyle(node.style, theme);
+      // Colors may come from state too ('{tone}': green, then amber when credits run low).
+      const style = textStyle(node.style?.color ? { ...node.style, color: fill(node.style.color, state) } : node.style, theme);
       if (!node.style?.mono) return <Text style={style} numberOfLines={node.style?.lines ?? 1} maxFontSizeMultiplier={1.3}>{value}</Text>;
       return <Rolling value={value} style={style} />;
     }
@@ -178,7 +179,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     }
     case 'track': {
       const color = node.color ?? theme.accent;
-      return <Track value={num(node.value, state)} marker={node.marker ? fill(node.marker, state) : ''} end={node.end ? fill(node.end, state) : ''} markerSize={node.markerSize} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} grow={inRow} />;
+      return <Track value={num(node.value, state)} marker={node.marker ? fill(node.marker, state) : ''} end={node.end ? fill(node.end, state) : ''} markerSize={node.markerSize} flip={node.flip} height={node.height ?? 4} color={color} track={node.track ?? alpha(color)} grow={inRow} />;
     }
     case 'bars': {
       const color = node.color ?? theme.accent;
@@ -207,7 +208,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
       if (!NativeGraphic) return null;
       return <NativeGraphic spec={nativeJson({ node, theme, state })} style={{ width: node.width ?? node.size ?? 40, height: node.size ?? 40 }} />;
     case 'timer':
-      return <Timer to={num(node.to, state)} countUp={node.countUp} style={textStyle(node.style, theme)} />;
+      return <Timer to={num(node.to, state)} countUp={node.countUp} style={textStyle(node.style?.color ? { ...node.style, color: fill(node.style.color, state) } : node.style, theme)} />;
     case 'button':
       return <Button node={node} ctx={ctx} />;
     case 'chips':
@@ -255,7 +256,7 @@ const gradient = (colors?: string[]) => (colors && colors.length > 1 ? `linear-g
 const flex = (v: string) => (v === 'start' ? 'flex-start' : v === 'end' ? 'flex-end' : v) as 'flex-start';
 
 function textStyle(s: TextStyle | undefined, theme: Theme): RNTextStyle {
-  const family = s?.font ?? fontFor(theme.fonts, s?.weight ?? 'medium');
+  const family = (s?.font === 'monospace' && Platform.OS === 'ios' ? 'Menlo' : s?.font) ?? fontFor(theme.fonts, s?.weight ?? 'medium');
   return {
     color: s?.color ?? theme.foreground,
     fontSize: s?.size ?? 14,
@@ -313,8 +314,11 @@ function Button({ node, ctx }: { node: ButtonNode; ctx: Ctx }) {
     return (
       <Pressable onPress={onPress} onPressIn={press.onPressIn} onPressOut={press.onPressOut} {...a11y}>
         <Animated.View style={[{ alignItems: 'center', gap: 6, width: 62 }, press.style]}>
-          <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: fillColor, alignItems: 'center', justifyContent: 'center', experimental_backgroundImage: tinted ? undefined : `linear-gradient(160deg, ${alpha('#FFFFFF', 0.28)}, ${alpha('#FFFFFF', 0)} 60%)` }}>
-            {icon ? <Icon name={icon} size={26} color={tinted ? base : node.textColor ?? '#FFFFFF'} /> : null}
+          {/* A 3D object sits on a lit, tinted glass squircle; a glyph sits on a solid one. */}
+          <View style={icon && isAsset(icon)
+            ? { width: 54, height: 54, borderRadius: 17, backgroundColor: alpha(base, 0.2), borderWidth: StyleSheet.hairlineWidth, borderColor: alpha(base, 0.45), alignItems: 'center', justifyContent: 'center', experimental_backgroundImage: `linear-gradient(160deg, ${alpha('#FFFFFF', 0.16)}, ${alpha('#FFFFFF', 0)} 55%)` }
+            : { width: 52, height: 52, borderRadius: 16, backgroundColor: fillColor, alignItems: 'center', justifyContent: 'center', experimental_backgroundImage: tinted ? undefined : `linear-gradient(160deg, ${alpha('#FFFFFF', 0.28)}, ${alpha('#FFFFFF', 0)} 60%)` }}>
+            {icon ? <Mark name={icon} size={isAsset(icon) ? 34 : 26} color={tinted ? base : node.textColor ?? '#FFFFFF'} /> : null}
           </View>
           {node.label ? <Text style={[textStyle({ size: 11, weight: 'semibold', color: theme.foreground }, theme), { textAlign: 'center' }]} numberOfLines={1}>{fill(node.label, state)}</Text> : null}
         </Animated.View>
@@ -329,7 +333,7 @@ function Button({ node, ctx }: { node: ButtonNode; ctx: Ctx }) {
         layout={LinearTransition.springify().dampingRatio(0.75)}
         style={[styles.button, circle && !armed ? { width: 44, height: 44, borderRadius: 22, paddingHorizontal: 0, alignSelf: 'center' } : { paddingHorizontal: 18 }, { backgroundColor: fillColor, borderColor: tinted ? alpha(base, 0.28) : 'rgba(255,255,255,0.16)' }, !tinted && styles.sheen, press.style]}
       >
-        {icon && !armed ? <Icon name={icon} size={circle ? 20 : 17} color={ink} /> : null}
+        {icon && !armed ? <Mark name={icon} size={isAsset(icon) ? (circle ? 26 : 22) : circle ? 20 : 17} color={ink} /> : null}
         {label ? <Animated.Text key={label} entering={FadeIn.duration(200)} style={textStyle({ weight: 'bold', color: ink, size: 15 }, theme)} numberOfLines={1}>{label}</Animated.Text> : null}
       </Animated.View>
     </Pressable>
@@ -357,7 +361,7 @@ function Chips({ node, ctx }: { node: ChipsNode; ctx: Ctx }) {
   return (
     <View style={{ flexDirection: 'row', alignSelf: 'stretch', backgroundColor: alpha(ctx.theme.foreground, 0.06), borderRadius: 18, padding: 3 }}>
       <Animated.View style={[{ position: 'absolute', top: 3, bottom: 3, left: 0, borderRadius: 15, backgroundColor: alpha(color, 0.22) }, knob]} />
-      {node.options.map((label, i) => (
+      {node.options.map((option, i) => fill(option, ctx.state)).map((label, i) => (
         <Pressable
           key={i}
           onLayout={(e) => { const { x: lx, width } = e.nativeEvent.layout; setLayouts((prev) => { const next = [...prev]; next[i] = { x: lx, w: width }; return next; }); }}
@@ -506,6 +510,8 @@ function Loop({ effect, children }: { effect: Effect; children: ReactNode }) {
   return <Animated.View style={style}>{children}</Animated.View>;
 }
 
+const isAsset = (name: string) => resolveAsset(name) !== name || /^(https?|file|data):/.test(name);
+
 /** A registered asset (3D image or Lottie) or a built-in icon, at a size. */
 function Mark({ name, size, color }: { name: string; size: number; color: string }) {
   const src = resolveAsset(name);
@@ -518,7 +524,7 @@ function Mark({ name, size, color }: { name: string; size: number; color: string
  * A bar with a marker riding on it — a scooter on its way to your door. The marker eases to each
  * new value and, when it's an object rather than an icon, bobs gently as if it were moving.
  */
-function Track({ value, marker, end, markerSize, height, color, track, grow }: { value: number; marker: string; end: string; markerSize?: number; height: number; color: string; track: string; grow?: boolean }) {
+function Track({ value, marker, end, markerSize, flip, height, color, track, grow }: { value: number; marker: string; end: string; markerSize?: number; flip?: boolean; height: number; color: string; track: string; grow?: boolean }) {
   const p = useSharedValue(clamp(value));
   const bob = useSharedValue(0);
   const reduced = useReducedMotion();
@@ -532,7 +538,7 @@ function Track({ value, marker, end, markerSize, height, color, track, grow }: {
     else bob.value = withTiming(0);
   }, [isAsset, reduced, value >= 1]);
   const run = Math.max(0, width - m - endSize);
-  const markerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: p.value * run }, { translateY: -bob.value * 1.5 }, { rotate: `${-bob.value * 2}deg` }] }));
+  const markerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: p.value * run }, { translateY: -bob.value * 1.5 }, { rotate: `${-bob.value * 2}deg` }, { scaleX: flip ? -1 : 1 }] }));
   const fillStyle = useAnimatedStyle(() => ({ width: p.value * run + m / 2 }));
   return (
     <View style={{ height: Math.max(24, m + 4), justifyContent: 'center', flexGrow: grow ? 1 : undefined, alignSelf: grow ? undefined : 'stretch' }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
@@ -594,26 +600,26 @@ function Rolling({ value, style }: { value: string; style: RNTextStyle }) {
 
 function Digit({ char, up, style }: { char: string; up: boolean; style: RNTextStyle[] }) {
   const reduced = useReducedMotion();
-  const d = up ? 1 : -1;
-  const enter = () => {
-    'worklet';
-    return {
-      initialValues: { opacity: 0, transform: [{ translateY: 14 * d }, { scale: 0.7 }] },
-      animations: { opacity: withTiming(1, { duration: 200 }), transform: [{ translateY: withSpring(0, { duration: 420, dampingRatio: 0.72 }) }, { scale: withSpring(1, { duration: 420, dampingRatio: 0.72 }) }] },
-    };
-  };
-  const exit = () => {
-    'worklet';
-    return {
-      initialValues: { opacity: 1, transform: [{ translateY: 0 }, { scale: 1 }] },
-      animations: { opacity: withTiming(0, { duration: 160 }), transform: [{ translateY: withTiming(-14 * d, { duration: 220 }) }, { scale: withTiming(0.7, { duration: 220 }) }] },
-    };
-  };
-  // Only digits move; separators (: , ₹ %) stay put.
-  const moves = /[0-9]/.test(char) && !reduced;
+  const size = StyleSheet.flatten(style)?.fontSize ?? 14;
+  const h = Math.round(size * 1.22);
+  const [pair, setPair] = useState({ prev: char, cur: char, up });
+  const t = useSharedValue(1);
+  useEffect(() => {
+    if (char === pair.cur) return;
+    setPair({ prev: pair.cur, cur: char, up });
+    t.value = 0;
+    t.value = reduced ? 1 : withSpring(1, { duration: 340, dampingRatio: 0.86 });
+  }, [char]);
+  // Growing numbers roll up (new digit from below), shrinking ones roll down.
+  const d = pair.up ? 1 : -1;
+  const incoming = useAnimatedStyle(() => ({ opacity: t.value, transform: [{ translateY: (1 - t.value) * h * 0.8 * d }, { scale: 0.75 + t.value * 0.25 }] }));
+  const outgoing = useAnimatedStyle(() => ({ opacity: 1 - t.value, transform: [{ translateY: -t.value * h * 0.8 * d }, { scale: 1 - t.value * 0.25 }] }));
+  const text = [...style, { lineHeight: h }];
+  if (!/[0-9]/.test(char) && !/[0-9]/.test(pair.prev)) return <Text style={text} maxFontSizeMultiplier={1.3}>{char}</Text>;
   return (
-    <View style={{ overflow: 'hidden' }}>
-      <Animated.Text key={moves ? char : 'static'} entering={moves ? enter : undefined} exiting={moves ? exit : undefined} style={style} maxFontSizeMultiplier={1.3}>{char}</Animated.Text>
+    <View style={{ height: h, overflow: 'hidden' }}>
+      {pair.prev !== pair.cur ? <Animated.Text style={[text, styles.ghost, outgoing]} maxFontSizeMultiplier={1.3}>{pair.prev}</Animated.Text> : null}
+      <Animated.Text style={[text, incoming]} maxFontSizeMultiplier={1.3}>{pair.cur}</Animated.Text>
     </View>
   );
 }
@@ -720,7 +726,7 @@ export interface HostProps {
    * Android glass: wrap your app in expo-blur's `<BlurTargetView ref={target}>` and pass the ref,
    * and `material: 'glass'` blurs what's behind the island (Android 12+). iOS and web need nothing.
    */
-  blurTarget?: RefObject<View | null>;
+  blurTarget?: RefObject<ComponentRef<typeof View> | null>;
 }
 
 /**
@@ -863,6 +869,7 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
     const targetW = isOpen ? geo.expandedWidth : Math.min(geo.expandedWidth, Math.max(compact.width, geo.gap + 2 * rowHeight));
     // Header padding + gap above the body + body + bottom margin.
     const targetH = isOpen ? rowHeight + OPEN_TOP * 2 + bodyHeight + OPEN_BOTTOM : rowHeight;
+    console.log('[halo] size', entry.id, isOpen, targetW, targetH, compact.width);
     w.value = to(targetW);
     h.value = to(targetH);
     radius.value = to(isOpen ? theme.radius : rowHeight / 2);
@@ -870,6 +877,17 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
     // Content follows the shape: it arrives as the island finishes growing and leaves before it shrinks.
     open.value = isOpen ? fade(1, 90, 260) : fade(0, 0, 130);
   }, [compact, bodyHeight, isOpen, leaving, geo.expandedWidth, rowHeight]);
+
+  // A different activity took the island: its content fades in as the shape morphs to it.
+  const swap = useSharedValue(1);
+  const shownId = useRef(entry.id);
+  useEffect(() => {
+    if (shownId.current === entry.id) return;
+    shownId.current = entry.id;
+    swap.value = 0;
+    swap.value = reduced ? 1 : withDelay(60, withTiming(1, { duration: 260 }));
+  }, [entry.id]);
+  const swapStyle = useAnimatedStyle(() => ({ opacity: swap.value, transform: [{ scale: 0.92 + swap.value * 0.08 }] }));
 
   const showBubble = !!bubble && !isOpen && !leaving;
   useEffect(() => { split.value = reduced ? (showBubble ? 1 : 0) : withSpring(showBubble ? 1 : 0, { duration: 800, dampingRatio: 0.62 }); }, [showBubble]);
@@ -996,7 +1014,7 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
           accessibilityHint={hasBody ? (isOpen ? 'Collapses the island' : 'Expands the island') : undefined}
           style={{ width: '100%', paddingHorizontal: isOpen ? OPEN_INSET - ROW_PAD : 0, paddingTop: isOpen ? OPEN_TOP : 0 }}
         >
-          <Animated.View key={entry.id} entering={FadeIn.duration(240).delay(60)} exiting={FadeOut.duration(120)}>{compactRow(true)}</Animated.View>
+          <Animated.View style={swapStyle}>{compactRow(true)}</Animated.View>
         </Pressable>
         {isOpen || bodyHeight ? (
           <Animated.View pointerEvents={isOpen ? 'box-none' : 'none'} style={[{ width: geo.expandedWidth - OPEN_INSET * 2, alignSelf: 'center', marginTop: OPEN_TOP }, bodyStyle]}>
@@ -1060,6 +1078,7 @@ const styles = StyleSheet.create({
   island: { position: 'absolute', alignSelf: 'center', overflow: 'hidden' },
   bubble: { position: 'absolute', overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  ghost: { position: 'absolute', left: 0, right: 0, textAlign: 'center' },
   compactRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: ROW_PAD },
   measure: { position: 'absolute', top: -10000, left: 0, opacity: 0 },
   scrim: { backgroundColor: 'rgba(0,0,0,0.38)' },

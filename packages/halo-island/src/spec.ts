@@ -72,9 +72,9 @@ type NodeBody =
   /**
    * A bar with a marker riding along it at `value` — a rider heading to your door. `marker` is an
    * icon name or a registered asset (a 3D image or a Lottie that plays while it moves); none draws
-   * a dot. `end` puts an icon or asset at the finish line.
+   * a dot. `end` puts an icon or asset at the finish line. `flip` mirrors a marker drawn facing left.
    */
-  | { type: 'track'; value: Num; marker?: string; end?: string; markerSize?: number; height?: number; color?: Color; track?: Color }
+  | { type: 'track'; value: Num; marker?: string; end?: string; markerSize?: number; flip?: boolean; height?: number; color?: Color; track?: Color }
   /**
    * A Rive file (.riv): a name from `registerAssets`, a URL, or `asset(require(...))`. `trigger`
    * names a state machine trigger to fire whenever its filled value changes; `inputs` sets number
@@ -269,7 +269,7 @@ export const bars = (values: Num[] | string, opts?: { active?: Num; height?: num
 export const arc = (value: Num, opts?: { height?: number; thickness?: number; colors?: Color[]; track?: Color; glow?: boolean; marker?: string; markerSize?: number }): IslandNode => ({ type: 'arc', value, ...opts });
 export const timeline = (value: Num, icons: string[], opts?: { size?: number; color?: Color; track?: Color; ink?: Color }): IslandNode => ({ type: 'timeline', value, icons, ...opts });
 export const spacer = (size?: number): IslandNode => ({ type: 'spacer', size });
-export const track = (value: Num, marker?: string, opts?: { end?: string; markerSize?: number; height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'track', value, marker, ...opts });
+export const track = (value: Num, marker?: string, opts?: { end?: string; markerSize?: number; flip?: boolean; height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'track', value, marker, ...opts });
 export const lottie = (uri: string, opts?: { size?: number; width?: number; loop?: boolean; speed?: number }): IslandNode => ({ type: 'lottie', uri, ...opts });
 export const rive = (uri: string, opts?: { size?: number; width?: number; artboard?: string; stateMachine?: string; trigger?: string; inputs?: Record<string, Num | boolean> }): IslandNode => ({ type: 'rive', uri, ...opts });
 /** Adds looping motion: `fx(text('LIVE'), 'pulse')`. */
