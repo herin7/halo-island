@@ -1,10 +1,10 @@
 // HOST v2 READY — in-app renderer: JS-drawn graphics, screens, inputs, pet, glass, bubble.
 import { requireNativeView } from 'expo';
-import { ComponentRef, ComponentType, ReactNode, RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { ComponentRef, ComponentType, ReactNode, RefObject, createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dimensions, Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useColorScheme, useWindowDimensions } from 'react-native';
-import Animated, { Easing, FadeIn, FadeInDown, FadeOut, FadeOutUp, LinearTransition, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn, FadeInDown, FadeOut, FadeOutUp, LinearTransition, cancelAnimation, interpolate, interpolateColor, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
-import { Arc, Bars, Icon, Pet, Ring, Sky, Sparkline, Timeline, alpha, clamp } from './graphics';
+import { Arc, Bars, Icon, Pet, Quiet, Ring, Sky, Sparkline, Timeline, alpha, clamp, useQuiet } from './graphics';
 import { placeIsland } from './geometry';
 import { Active, AssetSource, Cutout, emitAction, focus, native, nativeJson, resolveAsset, setState, springOf, store } from './island';
 import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTemplate, IslandTheme, Motion, Num, TextStyle, fill, fontFor, num, nums, on, resolveTheme, tracking, visible } from './spec';
@@ -507,14 +507,19 @@ function Bar({ value, height, color, track, grow }: { value: number; height: num
 /** Placeholder that breathes while content is on its way. */
 function Shimmer({ style }: { style: ViewStyle }) {
   const t = useSharedValue(0);
-  useEffect(() => { t.value = withRepeat(withTiming(1, { duration: 900 }), -1, true); }, []);
+  const quiet = useQuiet();
+  useEffect(() => {
+    if (quiet) return;
+    t.value = withRepeat(withTiming(1, { duration: 900 }), -1, true);
+    return () => cancelAnimation(t);
+  }, [quiet]);
   const a = useAnimatedStyle(() => ({ opacity: 0.06 + t.value * 0.08 }));
   return <Animated.View style={[style, { backgroundColor: '#FFFFFF' }, a]} />;
 }
 
 /** Looping motion. Each effect is one Reanimated loop; reduced motion turns them all off. */
 function Loop({ effect, children }: { effect: Effect; children: ReactNode }) {
-  const reduced = useReducedMotion();
+  const reduced = useQuiet();
   const t = useSharedValue(0);
   useEffect(() => {
     if (reduced) return;
@@ -524,6 +529,7 @@ function Loop({ effect, children }: { effect: Effect; children: ReactNode }) {
       : effect === 'wiggle'
         ? withRepeat(withSequence(withTiming(1, { duration: 70 }), withTiming(-1, { duration: 140 }), withTiming(1, { duration: 140 }), withTiming(0, { duration: 70 }), withDelay(1400, withTiming(0, { duration: 0 }))), -1)
         : withRepeat(withTiming(1, { duration: effect === 'bounce' ? 420 : 900, easing }), -1, true);
+    return () => cancelAnimation(t);
   }, [effect, reduced]);
   const style = useAnimatedStyle(() => {
     switch (effect) {
@@ -554,7 +560,7 @@ function Mark({ name, size, color }: { name: string; size: number; color: string
 function Track({ value, marker, end, markerSize, flip, height, color, track, puck, grow }: { value: number; marker: string; end: string; markerSize?: number; flip?: boolean; height: number; color: string; track: string; puck: string; grow?: boolean }) {
   const p = useSharedValue(clamp(value));
   const bob = useSharedValue(0);
-  const reduced = useReducedMotion();
+  const reduced = useQuiet();
   const [width, setWidth] = useState(0);
   const isAsset = !!marker && resolveAsset(marker) !== marker;
   const m = markerSize ?? (isAsset ? 30 : 18);
@@ -584,10 +590,14 @@ function Track({ value, marker, end, markerSize, flip, height, color, track, puc
   );
 }
 
+/** A paused preview: loops stop and timers hold their value. */
+const Paused = createContext(false);
+
 function Timer({ to, countUp, style }: { to: number; countUp?: boolean; style: RNTextStyle }) {
   const [now, setNow] = useState(Date.now);
+  const paused = useContext(Paused);
   useEffect(() => {
-    if (!Number.isFinite(to)) return;
+    if (!Number.isFinite(to) || paused) return;
     // Tick on the second boundary of `to`, so every timer on screen flips together and on time.
     let t: ReturnType<typeof setTimeout>;
     const tick = () => {
@@ -597,7 +607,7 @@ function Timer({ to, countUp, style }: { to: number; countUp?: boolean; style: R
     };
     tick();
     return () => clearTimeout(t);
-  }, [to]);
+  }, [to, paused]);
   return <Rolling value={clock(countUp ? now - to : to - now)} style={style} />;
 }
 
@@ -876,11 +886,15 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
   const h = useSharedValue(seed.h);
   const radius = useSharedValue(geo.height / 2);
   const opacity = useSharedValue(0);
-  const open = useSharedValue(0);
-  /** Header layout: follows the shape on the UI thread, so the header never jumps ahead of it. */
-  const morph = useSharedValue(0);
-  /** Compact trailing: leaves fast on open, returns only as the shape lands on close. */
-  const hide = useSharedValue(0);
+  /** Open progress of the shape, 0..1, one per axis. Everything inside is keyed to these, never to its
+   *  own timer, so content can't run ahead of the shape or blink out before it moves. */
+  const down = useSharedValue(0);
+  const across = useSharedValue(0);
+  // The body arrives between 30% and 85% of the drop; closing plays the same keys backwards, so it is
+  // drawn back into the pill while the pill can still hold it.
+  const open = useDerivedValue(() => interpolate(down.value, [0.3, 0.85], [0, 1], 'clamp'));
+  // The compact trailing value is gone once the island has widened 40%, and returns over the last 40%.
+  const hide = useDerivedValue(() => interpolate(across.value, [0, 0.4], [0, 1], 'clamp'));
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
   const press = useSharedValue(0);
@@ -900,32 +914,37 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
   };
   useEffect(() => { if (entry.key) pop(); }, [entry.key]);
 
-  const to = (v: number, opts?: { dampingRatio?: number }) => (spring ? withSpring(v, { ...spring, ...(opts?.dampingRatio ? { damping: 2 * Math.sqrt(spring.stiffness) * opts.dampingRatio } : null) }) : withTiming(v, { duration: 0 }));
+  // `quick`: 1.4x stiffer at the same damping ratio, so one axis leads without changing character.
+  const to = (v: number, opts?: { dampingRatio?: number; quick?: boolean }) => {
+    if (!spring) return withTiming(v, { duration: 0 });
+    const stiffness = spring.stiffness * (opts?.quick ? 1.4 : 1);
+    const ratio = opts?.dampingRatio ?? spring.damping / (2 * Math.sqrt(spring.stiffness));
+    // `mass: 1`: Reanimated defaults it to 4, which would make every preset twice as slow and far bouncier.
+    return withSpring(v, { ...spring, mass: 1, stiffness, damping: 2 * Math.sqrt(stiffness) * ratio });
+  };
   const fade = (v: number, delay = 0, duration = 200) => (reduced ? withTiming(v, { duration: 0 }) : withDelay(delay, withTiming(v, { duration })));
 
   useEffect(() => {
     if (!compact.width) return;
     if (leaving) {
       w.value = to(seed.w, { dampingRatio: 1 });
-      h.value = to(seed.h, { dampingRatio: 1 });
+      h.value = to(seed.h, { dampingRatio: 1, quick: true });
       radius.value = to(seed.h / 2);
       opacity.value = fade(0, 120, 220);
-      open.value = fade(0, 0, 120);
-      morph.value = to(0, { dampingRatio: 1 });
+      down.value = to(0, { dampingRatio: 1, quick: true });
+      across.value = to(0, { dampingRatio: 1 });
       return;
     }
     const targetW = isOpen ? geo.expandedWidth : Math.min(geo.expandedWidth, Math.max(compact.width, geo.gap + 2 * rowHeight));
     // Header padding + gap above the body + body + bottom margin.
     const targetH = isOpen ? rowHeight + OPEN_TOP * 2 + bodyHeight + OPEN_BOTTOM : rowHeight;
-    w.value = to(targetW);
-    h.value = to(targetH);
-    radius.value = to(isOpen ? theme.radius : rowHeight / 2);
+    // Opening widens a beat before it deepens; closing lifts the floor first and draws the sides in last.
+    w.value = to(targetW, { quick: isOpen });
+    h.value = to(targetH, { quick: !isOpen });
+    radius.value = to(isOpen ? theme.radius : rowHeight / 2, { quick: !isOpen });
     opacity.value = fade(1);
-    // Content follows the shape: it arrives as the island finishes growing and leaves before it shrinks.
-    // Timed to the shape (about 0.45s, like iOS): the body arrives once it has room and leaves before it shrinks.
-    open.value = isOpen ? fade(1, 110, 300) : fade(0, 0, 140);
-    hide.value = isOpen ? fade(1, 0, 120) : fade(0, 200, 220);
-    morph.value = to(isOpen ? 1 : 0, { dampingRatio: 1 });
+    down.value = to(isOpen ? 1 : 0, { dampingRatio: 1, quick: !isOpen });
+    across.value = to(isOpen ? 1 : 0, { dampingRatio: 1, quick: isOpen });
   }, [compact, bodyHeight, isOpen, leaving, geo.expandedWidth, rowHeight]);
 
   // A different activity took the island: its content fades in as the shape morphs to it.
@@ -956,12 +975,15 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
       transform: [{ translateX: dragX.value }, { scale: 1 - press.value * 0.035 }],
     };
   });
-  // Content grows out of the header, anchored at the top, as the shape opens.
-  const bodyStyle = useAnimatedStyle(() => ({ opacity: open.value, transform: [{ translateY: (1 - open.value) * -6 }, { scale: 0.96 + open.value * 0.04 }] }));
-  const headerStyle = useAnimatedStyle(() => {
-    const m = Math.min(1, Math.max(0, morph.value));
-    return { paddingHorizontal: m * (OPEN_INSET - ROW_PAD), paddingTop: m * OPEN_TOP };
+  // Content grows out of the header, anchored at the top, scaling with the shape as it opens.
+  const bodyStyle = useAnimatedStyle(() => {
+    const d = Math.min(1, Math.max(0, down.value));
+    return { opacity: open.value, transformOrigin: 'top', transform: [{ translateY: (1 - d) * -10 }, { scale: 0.86 + d * 0.14 }] };
   });
+  const headerStyle = useAnimatedStyle(() => ({
+    paddingHorizontal: Math.min(1, Math.max(0, across.value)) * (OPEN_INSET - ROW_PAD),
+    paddingTop: Math.min(1, Math.max(0, down.value)) * OPEN_TOP,
+  }));
   const trailingStyle = useAnimatedStyle(() => ({ opacity: 1 - hide.value, transform: [{ scale: 1 - hide.value * 0.3 }] }));
   const scrimStyle = useAnimatedStyle(() => ({ opacity: open.value }));
 
@@ -1058,11 +1080,13 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
 
       {/* Off-screen copies measure natural sizes; the visible island animates between them. */}
       <View pointerEvents="none" style={styles.measure}>
+        <Quiet.Provider value>
         <View style={{ alignSelf: 'flex-start' }} onLayout={(e) => {
           const { width, height } = e.nativeEvent.layout;
           setCompact({ width: Math.ceil(width), height: Math.ceil(height) });
         }}>{compactRow(false)}</View>
         <View style={{ width: geo.expandedWidth - OPEN_INSET * 2 }} onLayout={(e) => setBodyHeight(Math.ceil(e.nativeEvent.layout.height))}>{body}</View>
+        </Quiet.Provider>
       </View>
 
       {bubble && bubbleNode ? (
@@ -1095,7 +1119,8 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
           <Animated.View pointerEvents={isOpen ? 'box-none' : 'none'} style={[{ width: geo.expandedWidth - OPEN_INSET * 2, alignSelf: 'center', marginTop: OPEN_TOP, transformOrigin: 'top' }, bodyStyle]}>
             {/* Screens slide only while open: the reset to the main screen after closing stays still. */}
             <Animated.View key={`${entry.id}:${screen ?? ''}`} entering={reduced || !isOpen ? undefined : screenIn(dir)} exiting={reduced || !isOpen ? undefined : screenOut(dir)}>
-              {body}
+              {/* Collapsed, the body is kept for the next open but runs no loops. */}
+              <Quiet.Provider value={!isOpen}>{body}</Quiet.Provider>
             </Animated.View>
           </Animated.View>
         ) : null}
@@ -1107,9 +1132,10 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
 /**
  * A static island for galleries, docs and design reviews — same renderer, no live activity.
  * `expanded` shows the expanded layout (or `screen`); otherwise the compact pill. Inputs and
- * navigation work locally, so a gallery card is playable.
+ * navigation work locally, so a gallery card is playable. `paused` stops its loops and timers:
+ * pass it for previews scrolled out of view, so a long gallery only animates what's on screen.
  */
-export function IslandPreview({ template, state: initial = {}, expanded = false, screen: first, theme: base, onAction }: { template: IslandTemplate; state?: IslandState; expanded?: boolean; screen?: string; theme?: IslandTheme; onAction?: (action: string, state: IslandState) => void }) {
+export function IslandPreview({ template, state: initial = {}, expanded = false, screen: first, theme: base, paused = false, onAction }: { template: IslandTemplate; state?: IslandState; expanded?: boolean; screen?: string; theme?: IslandTheme; paused?: boolean; onAction?: (action: string, state: IslandState) => void }) {
   const scheme = useColorScheme();
   const theme = themeOf(template.theme, base, scheme);
   const [local, setLocal] = useState<IslandState>({});
@@ -1138,6 +1164,8 @@ export function IslandPreview({ template, state: initial = {}, expanded = false,
     </View>
   );
   return (
+    <Paused.Provider value={paused}>
+    <Quiet.Provider value={paused}>
     <View style={{ borderColor: theme.material === 'glass' ? 'rgba(255,255,255,0.22)' : theme.border, borderWidth: StyleSheet.hairlineWidth, borderRadius: expanded ? theme.radius : 999, alignSelf: expanded ? 'stretch' : 'flex-start', overflow: 'hidden' }}>
       <Surface theme={theme} open={{ value: open ? 1 : 0 }} />
       {row}
@@ -1147,6 +1175,8 @@ export function IslandPreview({ template, state: initial = {}, expanded = false,
         </Animated.View>
       ) : null}
     </View>
+    </Quiet.Provider>
+    </Paused.Provider>
   );
 }
 

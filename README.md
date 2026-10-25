@@ -192,6 +192,65 @@ halo-island/
 └── tools/island-bridge/    Claude Code → island bridge (no dependencies)
 ```
 
+## 🔋 Performance & Battery
+
+An island that isn't moving costs nothing. Halo Island only draws frames while something on the
+island visibly moves, so its CPU cost depends on what *your* template does, not on the library
+being mounted.
+
+**What costs frames, and when**
+
+| On the island | Cost while it shows | When it stops |
+|---|---|---|
+| Static compact (text, icons, numbers) | ~0: no frames between updates | always idle |
+| A state update (`live.update`, `useIsland`) | one short re-render + transition | when the transition lands (~0.5s) |
+| `timer()` / countdown | one update per second | when the island ends |
+| `pet()` | a glance every ~3s, a blink every 2–5s | `still` previews, reduced motion |
+| `bars({ animate: true })`, `sky()`, `effect` (pulse/spin/…), Lottie, Rive | every frame | when hidden, collapsed or paused |
+| Open / close | every frame for ~0.5s | when the shape lands |
+
+Things that never cost frames:
+
+* The expanded layout while the island is collapsed: it stays mounted so the island knows its
+  size before it opens, but its loops don't run until it opens.
+* The Android over-other-apps island while it's hidden, and anything it draws natively while
+  collapsed.
+* Anything while your app is in the background.
+
+**Galleries and lists.** Each visible `<IslandPreview>` with moving parts adds its own frames. For
+a long list, mount previews near the viewport only, or pass `paused` to the ones scrolled out of
+view; they keep their layout and stop their loops and timers:
+
+```tsx
+<IslandPreview template={t} state={s} paused={!viewable.has(id)} />
+```
+
+**Reduced motion.** With the system's reduce-motion setting on, every loop stops and transitions
+jump to their end; timers still tick.
+
+**Measured.** Release build of the example app, per-process CPU over 10s (100% = one core), idle on
+its first screen and scrolled to the gallery:
+
+| Device | Idle, 0.3.0 | Idle, now | Gallery, 0.3.0 | Gallery, now |
+|---|---|---|---|---|
+| Galaxy S21 FE (Exynos 2100, 120 Hz) | 168% | 138% | 166% | 102% |
+| Android emulator (x86_64) | 86% | 44% | 72% | 37% |
+
+The example app is deliberately busy (a pet that follows your finger, a bouncing hint, an island
+that updates every second, seventeen live cards). Most of what's left is its own decoration:
+removing just its bouncing hint arrow takes idle from 138% to 86% on the S21 FE and from 44% to 22%
+on the emulator. Your app will be quieter: an island with a static compact layout idles at the same
+CPU as no island at all (3.6% vs 3.2%, 0 frames, emulator). Wrapping your app in `BlurTargetView`
+for Android glass measured no extra cost.
+
+**Measure your own app.** Debug builds run JavaScript 2–3× slower; measure a release build.
+
+```sh
+adb shell dumpsys gfxinfo <your.package> reset   # then leave the app idle for 10s
+adb shell dumpsys gfxinfo <your.package> | grep "Total frames"   # ~0 when nothing moves
+adb shell top -b -n 3 -d 2 -p $(adb shell pidof <your.package>)
+```
+
 ## ⚠️ Honest Limits
 
 * **iOS Live Activities (lock screen / system island) are not in 0.2.** On iOS you get the in-app

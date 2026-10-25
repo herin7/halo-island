@@ -315,7 +315,9 @@ Missing font weights fall back to the nearest one that's set. To set base defaul
 | `blurTarget` | | Android glass: a ref to the `BlurTargetView` (expo-blur) wrapping your screen, so the island blurs what's under it |
 | `debugCutout` | `false` | Outlines the camera hole the island detected. For checking a new device; `getCutout()` returns the same numbers for a bug report |
 
-`<IslandPreview>` renders a template statically, for galleries and design tools.
+`<IslandPreview>` renders a template statically, for galleries and design tools. Pass `paused` to
+previews scrolled out of view: their loops and timers stop, so a long gallery only animates what's
+on screen.
 
 ## Start options
 

@@ -204,11 +204,13 @@ export default function App() {
               </Press>
             ))}
           </ScrollView>
-          <View style={s.grid}>
-            {shown.map((sc) => (
-              <ScenarioCard key={sc.id} sc={sc} width={gridW} live={playing.includes(sc.id)} base={base} onPress={playRef} />
-            ))}
-          </View>
+          <Lazy estimate={Math.ceil(shown.length / 2) * 190}>
+            <View style={s.grid}>
+              {shown.map((sc) => (
+                <ScenarioCard key={sc.id} sc={sc} width={gridW} live={playing.includes(sc.id)} base={base} onPress={playRef} />
+              ))}
+            </View>
+          </Lazy>
 
           {/* Coordination */}
           <Section kicker="In sync" color="#5E8BFF" title="One state." serif="Two views.">

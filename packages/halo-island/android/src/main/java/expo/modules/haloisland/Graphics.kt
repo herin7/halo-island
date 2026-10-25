@@ -52,9 +52,12 @@ internal class BarsView(context: Context, private val color: Int, private val tr
     }
   }
 
-  override fun onAttachedToWindow() {
-    super.onAttachedToWindow()
-    if (!animateWave || !ValueAnimator.areAnimatorsEnabled()) return
+  // The wave runs only while the bars can be seen: hidden or off-window, it costs no frames.
+  override fun onVisibilityAggregated(isVisible: Boolean) {
+    super.onVisibilityAggregated(isVisible)
+    wave?.cancel()
+    wave = null
+    if (!isVisible || !animateWave || !ValueAnimator.areAnimatorsEnabled()) return
     wave = ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
       duration = 1200
       repeatCount = ValueAnimator.INFINITE
@@ -301,9 +304,10 @@ internal class PetView(context: Context) : View(context) {
 
   private fun current() = FloatArray(12) { from[it] + (to[it] - from[it]) * t }
 
-  override fun onAttachedToWindow() {
-    super.onAttachedToWindow()
-    if (ValueAnimator.areAnimatorsEnabled()) postDelayed(blinker, 1200)
+  override fun onVisibilityAggregated(isVisible: Boolean) {
+    super.onVisibilityAggregated(isVisible)
+    removeCallbacks(blinker)
+    if (isVisible && ValueAnimator.areAnimatorsEnabled()) postDelayed(blinker, 1200)
   }
 
   override fun onDetachedFromWindow() {
@@ -376,9 +380,12 @@ internal class FlightArcView(context: Context, private val color: Int, private v
 
   fun set(v: Float) { value = v.coerceIn(0f, 1f); invalidate() }
 
-  override fun onAttachedToWindow() {
-    super.onAttachedToWindow()
-    if (!ValueAnimator.areAnimatorsEnabled()) return
+  // The clock runs only while the view can be seen: hidden or off-window, it costs no frames.
+  override fun onVisibilityAggregated(isVisible: Boolean) {
+    super.onVisibilityAggregated(isVisible)
+    clock?.cancel()
+    clock = null
+    if (!isVisible || !ValueAnimator.areAnimatorsEnabled()) return
     clock = ValueAnimator.ofFloat(0f, 1f).apply {
       duration = 1000
       repeatCount = ValueAnimator.INFINITE
@@ -500,9 +507,11 @@ internal class SkyView(context: Context) : View(context) {
     invalidate()
   }
 
-  override fun onAttachedToWindow() {
-    super.onAttachedToWindow()
-    if (!ValueAnimator.areAnimatorsEnabled()) return
+  override fun onVisibilityAggregated(isVisible: Boolean) {
+    super.onVisibilityAggregated(isVisible)
+    clock?.cancel()
+    clock = null
+    if (!isVisible || !ValueAnimator.areAnimatorsEnabled()) return
     clock = ValueAnimator.ofFloat(0f, 1f).apply { duration = 1000; repeatCount = ValueAnimator.INFINITE; interpolator = null; addUpdateListener { invalidate() }; start() }
   }
 

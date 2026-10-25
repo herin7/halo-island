@@ -2,9 +2,9 @@
  * Graphics for the in-app renderer, drawn with react-native-svg and Reanimated so they run the
  * same on iOS, Android and web. The Android overlay draws its own natively (Graphics.kt).
  */
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
-import Animated, { Easing, FadeIn, FadeOut, SharedValue, makeMutable, useAnimatedProps, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn, FadeOut, SharedValue, cancelAnimation, makeMutable, useAnimatedProps, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Mask, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { ICONS } from './icons';
@@ -13,6 +13,18 @@ import { Mood } from './spec';
 const APath = Animated.createAnimatedComponent(Path);
 const ACircle = Animated.createAnimatedComponent(Circle);
 const AG = Animated.createAnimatedComponent(G);
+
+/**
+ * True inside content nobody can see: the host's measuring copy, or the expanded body while the
+ * island is collapsed. Looping motion stops there, so an idle island costs no frames.
+ */
+export const Quiet = createContext(false);
+
+/** Reduced motion, or out of sight: either way, run no loops. */
+export function useQuiet() {
+  const reduced = useReducedMotion();
+  return useContext(Quiet) || reduced;
+}
 
 export function clamp(v: number, lo = 0, hi = 1) {
   'worklet';
@@ -60,9 +72,9 @@ export function Ring({ value, size, thickness, color, track }: { value: number; 
   );
 }
 
-/** One shared clock for every live waveform, so they move in step. */
+/** One shared clock for every live waveform, so they move in step. It runs only while one is shown. */
 const wave = makeMutable(0);
-let waveStarted = false;
+let waveUsers = 0;
 
 function Bar({ value, active, color, track, width, height, live, index }: { value: number; active: boolean; color: string; track: string; width: number; height: number; live: boolean; index: number }) {
   const v = useSharedValue(clamp(value));
@@ -82,11 +94,13 @@ function Bar({ value, active, color, track, width, height, live, index }: { valu
 }
 
 export function Bars({ values, active, height, gap, color, track, live }: { values: number[]; active: number; height: number; gap: number; color: string; track: string; live: boolean }) {
-  const reduced = useReducedMotion();
+  const reduced = useQuiet();
   useEffect(() => {
-    if (!live || reduced || waveStarted) return;
-    waveStarted = true;
-    wave.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.linear }), -1);
+    if (!live || reduced) return;
+    if (waveUsers++ === 0) wave.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.linear }), -1);
+    return () => {
+      if (--waveUsers === 0) cancelAnimation(wave);
+    };
   }, [live, reduced]);
   const [w, setW] = useState(0);
   const barW = values.length ? (w - gap * (values.length - 1)) / values.length : 0;
@@ -246,7 +260,7 @@ function Flight({ w, height, x0, y0, cx, cy, x1, p, thickness, track, color, glo
   w: number; height: number; x0: number; y0: number; cx: number; cy: number; x1: number; p: SharedValue<number>;
   thickness: number; track: string; color: string; glow: boolean; marker: ReactNode; markerSize: number; id: string;
 }) {
-  const reduced = useReducedMotion();
+  const reduced = useQuiet();
   // Idle life: the plane rides the air, the halo breathes, streaks stream past.
   const idle = useSharedValue(0.5);
   const wind = useSharedValue(0);
@@ -254,6 +268,7 @@ function Flight({ w, height, x0, y0, cx, cy, x1, p, thickness, track, color, glo
     if (reduced) return;
     idle.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.sin) }), -1, true);
     wind.value = withRepeat(withTiming(1, { duration: 1100, easing: Easing.linear }), -1);
+    return () => { cancelAnimation(idle); cancelAnimation(wind); };
   }, [reduced]);
 
   const ahead = useAnimatedProps(() => ({ d: quad(x0, y0, cx, cy, x1).segment(p.value, 1) }));
@@ -378,7 +393,7 @@ export function Timeline({ value, icons, size, color, track, ink }: { value: num
 
 function Pulse({ on, style, children }: { on: boolean; style: ViewStyle; children: ReactNode }) {
   const s = useSharedValue(1);
-  const reduced = useReducedMotion();
+  const reduced = useQuiet();
   useEffect(() => {
     s.value = on && !reduced ? withRepeat(withSequence(withTiming(1.12, { duration: 600 }), withTiming(1, { duration: 600 })), -1) : withTiming(1);
   }, [on, reduced]);
@@ -399,7 +414,9 @@ export const lookY = makeMutable(0);
 let lastLook = 0;
 let wandering: ReturnType<typeof setInterval> | null = null;
 
-const LOOK_SPRING = { stiffness: 220, damping: 22 };
+// Reanimated defaults `mass` to 4: without `mass: 1` this rings for ~3.4s, longer than the 3.2s
+// between glances, and the eyes never stop animating.
+const LOOK_SPRING = { stiffness: 220, damping: 22, mass: 1 };
 
 /** Points every pet's eyes at a screen position. Call it from a touch or pointer handler. */
 export function lookAt(x: number, y: number, screen: { width: number; height: number }) {
@@ -451,7 +468,7 @@ function eyePath(e: number[], o: number, s: number, cx: number, cy: number, mirr
  * turns the island itself into a character.
  */
 export function Pet({ mood = 'idle', size, color, cheeks, still }: { mood?: string; size: number; color: string; cheeks: string; still?: boolean }) {
-  const reduced = useReducedMotion();
+  const reduced = useQuiet();
   const width = size * 1.5;
   const from = useSharedValue(flat(mood));
   const to = useSharedValue(flat(mood));
@@ -546,11 +563,12 @@ const CLOUD = {
  */
 export function Sky({ condition, size }: { condition: string; size: number }) {
   const width = Math.round(size * 1.15);
-  const reduced = useReducedMotion();
+  const reduced = useQuiet();
   const t = useSharedValue(0);
   useEffect(() => {
     if (reduced) return;
     t.value = withRepeat(withTiming(1, { duration: 6000, easing: Easing.inOut(Easing.sin) }), -1, true);
+    return () => cancelAnimation(t);
   }, [reduced]);
   const c = (['clear', 'partly', 'cloudy', 'rain', 'storm'].includes(condition) ? condition : 'cloudy') as SkyCondition;
   const drift = useAnimatedStyle(() => ({ transform: [{ translateX: (t.value - 0.5) * size * 0.05 }, { scale: 1 + t.value * 0.015 }] }));
@@ -660,6 +678,7 @@ function Drop({ x, top, index, size, still }: { x: number; top: number; index: n
   useEffect(() => {
     if (still) { p.value = 0.5; return; }
     p.value = withDelay(index * 130, withRepeat(withTiming(1, { duration: 820, easing: Easing.in(Easing.quad) }), -1));
+    return () => cancelAnimation(p);
   }, [still]);
   const fall = size * 0.26;
   const len = size * 0.12;
@@ -685,6 +704,7 @@ function Bolt({ k, still }: { k: number; still: boolean }) {
   useEffect(() => {
     if (still) return;
     f.value = withRepeat(withSequence(withDelay(2600, withTiming(1, { duration: 60 })), withTiming(0.2, { duration: 90 }), withTiming(1, { duration: 50 }), withTiming(0, { duration: 260 })), -1);
+    return () => cancelAnimation(f);
   }, [still]);
   const style = useAnimatedStyle(() => ({ opacity: f.value }));
   const d = `M${56 * k},${50 * k} L${46 * k},${66 * k} L${53 * k},${66 * k} L${47 * k},${80 * k} L${62 * k},${61 * k} L${55 * k},${61 * k} L${61 * k},${50 * k} Z`;
