@@ -2,3 +2,6 @@ shots/
 dist/
 node_modules/
 *.tsbuildinfo
+
+.vercel
+.env*
