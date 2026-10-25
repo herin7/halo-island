@@ -6,7 +6,7 @@ const lib = fileURLToPath(new URL('../packages/halo-island/src/', import.meta.ur
 
 export default defineConfig(({ mode }) => {
   // Share cards need absolute URLs; set VITE_SITE_URL per deployment.
-  const site = (process.env.VITE_SITE_URL || loadEnv(mode, process.cwd(), 'VITE_').VITE_SITE_URL || 'https://halo-island.vercel.app').replace(/\/$/, '');
+  const site = (process.env.VITE_SITE_URL || loadEnv(mode, process.cwd(), 'VITE_').VITE_SITE_URL || 'https://halo-island-psi.vercel.app').replace(/\/$/, '');
   return {
     plugins: [react(), { name: 'site-url', transformIndexHtml: (html: string) => html.replaceAll('%SITE_URL%', site) }],
     // The site renders the library's own spec, so templates in ../example import unchanged.

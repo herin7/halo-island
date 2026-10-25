@@ -31,7 +31,7 @@ vercel          # preview
 vercel --prod   # production
 ```
 
-Set `VITE_SITE_URL` (e.g. `https://halo-island.dev`) at build time; share-card URLs default to `https://halo-island.vercel.app`.
+Set `VITE_SITE_URL` (e.g. `https://halo-island.dev`) at build time; share-card URLs default to `https://halo-island-psi.vercel.app`.
 
 ## Map
 
