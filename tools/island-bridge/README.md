@@ -1,27 +1,42 @@
-# Claude Code → your island
+# Your desk → your island
 
-See your real Claude Code usage limits, what Claude is doing right now, and approve or deny its
-permission requests — from the Dynamic Island on your phone.
+The bridge runs on your computer and feeds the island on your phone:
+
+- **Claude Code**: your real 5-hour and weekly limits, today's tokens, sessions and active time
+  (from Claude Code's own transcripts), what Claude is doing, and permission requests you
+  **Allow / Deny** from the island.
+- **GitHub**: the CI run for what you just pushed (live, then passed/failed), PRs waiting for your
+  review, today's contributions and your streak. Uses `gh auth token` or `GITHUB_TOKEN`.
+- **Files and text**: `bridge.mjs send <file | text>` puts it on the phone's island (Save / Copy /
+  Open). Share anything to Halo on the phone and it lands in `~/Downloads/Halo` (text goes to
+  your clipboard).
 
 ```
-Claude Code ──hooks + statusline──▶ bridge.mjs (your machine) ◀──long-poll── example app ──▶ island
-                                         ▲                                         │
-                                         └──────────── Allow / Deny ◀──────────────┘
+Claude Code ──hooks + statusline──▶ bridge.mjs (your machine) ◀──long-poll── phone ──▶ island
+GitHub API ─────────────────────────────▲  │                                   │
+                                        └──┴────── Allow / Deny, files ◀──────┘
 ```
+
+No dependencies.
 
 ## 1. Start the bridge
 
 ```sh
-node tools/island-bridge/bridge.mjs          # localhost: emulator or USB phone via adb reverse
-node tools/island-bridge/bridge.mjs --lan    # a phone on the same Wi-Fi
+node tools/island-bridge/bridge.mjs --lan    # phone on the same Wi-Fi
+node tools/island-bridge/bridge.mjs          # localhost only: emulator or USB (adb reverse tcp:7337 tcp:7337)
 ```
 
-It prints a token. Export it where you run Claude Code: `export HALO_BRIDGE_TOKEN=<token>`
-(PowerShell: `$env:HALO_BRIDGE_TOKEN="<token>"`).
+The token is created once and kept in `~/.halo/bridge.json`, so a paired phone stays paired and
+the hooks need no environment variables.
 
-## 2. Tell Claude Code about it
+## 2. Pair the phone
 
-Add to `~/.claude/settings.json` (merge with what's there; use an absolute path to `hook.mjs`):
+Open `http://localhost:7337/pair` on the computer and scan the QR code with the phone's camera.
+It opens Halo already paired. (Or type the address and token into Halo → Settings.)
+
+## 3. Tell Claude Code about it
+
+Merge into `~/.claude/settings.json` (absolute path to `hook.mjs`):
 
 ```json
 {
@@ -29,6 +44,7 @@ Add to `~/.claude/settings.json` (merge with what's there; use an absolute path 
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node /path/to/tools/island-bridge/hook.mjs" }] }],
     "PreToolUse":       [{ "hooks": [{ "type": "command", "command": "node /path/to/tools/island-bridge/hook.mjs" }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "node /path/to/tools/island-bridge/hook.mjs" }] }],
     "Stop":             [{ "hooks": [{ "type": "command", "command": "node /path/to/tools/island-bridge/hook.mjs" }] }],
     "Notification":     [{ "hooks": [{ "type": "command", "command": "node /path/to/tools/island-bridge/hook.mjs" }] }],
     "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "node /path/to/tools/island-bridge/hook.mjs --ask", "timeout": 120 }] }]
@@ -37,20 +53,22 @@ Add to `~/.claude/settings.json` (merge with what's there; use an absolute path 
 ```
 
 - The statusline feeds the **real** limits Claude Code reports (`rate_limits.five_hour`,
-  `seven_day`: percent used and reset time), plus model, cost and context window.
-- `PermissionRequest` fires only when Claude Code would ask you. The island shows the command;
-  Allow (with an in-place confirm) or Deny answers it. No answer in 90 s → Claude Code asks in the
-  terminal as usual. If the bridge isn't running, every hook is a silent no-op.
+  `seven_day`). Without it the island still shows today's tokens from the transcripts.
+- `PostToolUse` lets the island follow CI the moment Claude runs `git push`.
+- `PermissionRequest` waits for the island only while a phone is connected; otherwise Claude Code
+  asks in the terminal right away. No answer in 90 s → the terminal asks as usual. If the bridge
+  isn't running, every hook is a silent no-op.
 
-## 3. Connect the app
+## Send things to the phone
 
-Emulator or USB phone: run `adb reverse tcp:7337 tcp:7337` and keep the app's address at
-`localhost:7337`. Phone on Wi-Fi: start the bridge with `--lan` and enter the address it printed.
-Paste the token and flip **Connect**. The island appears with your limits and pops open when
-Claude asks for permission.
+```sh
+node tools/island-bridge/bridge.mjs send build/app.apk
+node tools/island-bridge/bridge.mjs send "https://github.com/herin7/halo-island/pull/12"
+```
 
 ## Security
 
-The token is the only thing standing between the network and "Allow". It's random per run (or
-`HALO_BRIDGE_TOKEN`), compared in constant time, and the bridge listens on localhost unless you pass
-`--lan`. Only use `--lan` on a network you trust, and stop the bridge when you're done.
+The token is the only thing standing between the network and "Allow". It's random, compared in
+constant time, and the bridge listens on localhost unless you pass `--lan`. The pairing page is
+served to the computer itself only. Use `--lan` on networks you trust, and stop the bridge when
+you're done.

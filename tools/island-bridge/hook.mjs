@@ -8,8 +8,14 @@
  *   node tools/island-bridge/hook.mjs --ask    # PermissionRequest: wait for Allow / Deny from the island
  *   node tools/island-bridge/hook.mjs --status # statusLine: forward model, cost, context
  */
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 const PORT = process.env.HALO_BRIDGE_PORT ?? 7337;
-const TOKEN = process.env.HALO_BRIDGE_TOKEN ?? '';
+// The bridge keeps its token in ~/.halo/bridge.json, so hooks need no environment setup.
+let TOKEN = process.env.HALO_BRIDGE_TOKEN ?? '';
+if (!TOKEN) try { TOKEN = JSON.parse(readFileSync(join(homedir(), '.halo', 'bridge.json'), 'utf8')).token; } catch {}
 const ask = process.argv.includes('--ask');
 const status = process.argv.includes('--status');
 
