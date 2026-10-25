@@ -3,7 +3,7 @@ import { IslandNode, IslandState, TextStyle, fill, num, nums, on, tracking, visi
 import { AnimatePresence, motion } from 'motion/react';
 import { CSSProperties, KeyboardEvent, PointerEvent, ReactNode, useEffect, useId, useRef, useState } from 'react';
 
-import { Arc, Bar, Bars, Icon, Mark, Pet, Ring, Sparkline, Timeline, Track, isAsset } from './graphics';
+import { Arc, Bar, Bars, Icon, Mark, Pet, Ring, Sky, Sparkline, Timeline, Track, isAsset } from './graphics';
 import { resolveAsset } from './media';
 import { Lottie, Rive } from './players';
 import { Theme, WEIGHT, alpha, clamp, clock, familyOf, gradient, italicOf } from './util';
@@ -143,7 +143,7 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
       return <Sparkline values={nums(node.values, state)} height={node.height ?? 40} color={node.color ?? theme.accent} fill={node.fill ?? true} thickness={node.thickness ?? 2} />;
     case 'arc': {
       const colors = node.colors?.length ? node.colors : [theme.accent];
-      return <Arc value={num(node.value, state)} height={node.height ?? 64} thickness={node.thickness ?? 4} colors={colors} track={node.track ?? alpha('#FFFFFF', 0.3)} glow={node.glow ?? true} marker={node.marker ? fill(node.marker, state) : undefined} markerSize={node.markerSize ?? 28} accent={theme.accent} />;
+      return <Arc value={num(node.value, state)} height={node.height ?? 64} thickness={node.thickness ?? 4} colors={colors} track={node.track ?? alpha('#FFFFFF', 0.3)} glow={node.glow ?? true} marker={node.marker ? fill(node.marker, state) : undefined} markerSize={node.markerSize ?? 28} accent={theme.foreground} />;
     }
     case 'timeline': {
       const color = node.color ?? theme.accent;
@@ -151,6 +151,8 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
     }
     case 'timer':
       return <Timer to={num(node.to, state)} countUp={node.countUp} style={textStyle(tone(node.style, state), theme)} />;
+    case 'sky':
+      return <Sky condition={fill(node.condition, state)} size={node.size ?? 72} />;
     case 'pet':
       return <Pet mood={node.mood ? fill(node.mood, state) || 'idle' : 'idle'} size={node.size ?? 22} color={node.color ?? theme.foreground} cheeks={node.cheeks ?? '#FF6B8B'} />;
     case 'button':

@@ -4,7 +4,7 @@
  */
 import { ICONS } from '@halo/icons';
 import type { Mood } from 'halo-island';
-import { animate, motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
+import { AnimatePresence, MotionValue, animate, motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
 import { CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { onPointer, pointer } from './look';
@@ -184,28 +184,53 @@ export function Sparkline({ values, height, color, fill, thickness }: { values: 
   );
 }
 
+/** Point, tangent and sub-curves of the quadratic an Arc draws. */
+function quad(x0: number, y0: number, cx: number, cy: number, x1: number) {
+  const at = (t: number) => [(1 - t) ** 2 * x0 + 2 * (1 - t) * t * cx + t * t * x1, (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t * t * y0];
+  const slope = (t: number) => [2 * (1 - t) * (cx - x0) + 2 * t * (x1 - cx), 2 * (1 - t) * (cy - y0) + 2 * t * (y0 - cy)];
+  return {
+    at,
+    slope,
+    /** The piece of the curve between t = a and t = b, as path data. */
+    segment(a: number, b: number) {
+      const [ax, ay] = at(a), [bx, by] = at(b), [sx, sy] = slope(a);
+      const k = (b - a) / 2;
+      return `M${ax},${ay} Q${ax + sx * k},${ay + sy * k} ${bx},${by}`;
+    },
+  };
+}
+
+/** Comet tail behind a rider: stacked strokes, shorter ones on top, so it brightens toward the head. */
+const TAIL = [
+  { length: 1, width: 0.6, opacity: 0.14 },
+  { length: 0.62, width: 1, opacity: 0.22 },
+  { length: 0.36, width: 1.5, opacity: 0.36 },
+  { length: 0.16, width: 2, opacity: 0.6 },
+];
+const REACH = 0.28;
+
 export function Arc({ value, height, thickness, colors, track, glow, marker, markerSize = 28, accent }: { value: number; height: number; thickness: number; colors: string[]; track: string; glow: boolean; marker?: string; markerSize?: number; accent: string }) {
   const [ref, w] = useWidth<HTMLDivElement>();
   const id = useId();
   const p = useSpring(clamp(value), { stiffness: 120, damping: 22 });
   useEffect(() => { p.set(clamp(value)); }, [value]);
-  const pad = thickness * 2 + 6;
-  const x0 = pad, y0 = height - thickness, cx = w / 2, cy = -height + thickness * 3, x1 = w - pad;
-  const at = (t: number) => [(1 - t) ** 2 * x0 + 2 * (1 - t) * t * cx + t * t * x1, (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t * t * y0];
+  // A rider needs room: half its size at the ends and above the peak, so it never clips.
+  const pad = marker ? markerSize * 0.5 : thickness * 2 + 6;
+  const top = marker ? markerSize * 0.6 : thickness;
+  const y0 = height - (marker ? markerSize * 0.3 : thickness);
+  const x0 = pad, x1 = w - pad, cx = w / 2, cy = 2 * top - y0;
+  const q = quad(x0, y0, cx, cy, x1);
   let len = 0;
-  for (let i = 1, [px, py] = at(0); i <= 40; i++) { const [x, y] = at(i / 40); len += Math.hypot(x - px, y - py); px = x; py = y; }
+  for (let i = 1, [px, py] = q.at(0); i <= 40; i++) { const [x, y] = q.at(i / 40); len += Math.hypot(x - px, y - py); px = x; py = y; }
   const d = `M${x0},${y0} Q${cx},${cy} ${x1},${y0}`;
   const offset = useTransform(p, (t) => len * (1 - t));
-  const mx = useTransform(p, (t) => at(t)[0]);
-  const my = useTransform(p, (t) => at(t)[1]);
-  // An object riding the arc (a plane) follows the curve and tilts along its slope.
-  const rx = useTransform(p, (t) => at(t)[0] - markerSize / 2);
-  const ry = useTransform(p, (t) => at(t)[1] - markerSize / 2);
-  const tilt = useTransform(p, (t) => (Math.atan2(2 * (1 - t) * (cy - y0) + 2 * t * (y0 - cy), 2 * (1 - t) * (cx - x0) + 2 * t * (x1 - cx)) * 180) / Math.PI);
+  const mx = useTransform(p, (t) => q.at(t)[0]);
+  const my = useTransform(p, (t) => q.at(t)[1]);
   const last = colors[colors.length - 1];
   return (
     <div ref={ref} style={{ height, alignSelf: 'stretch', position: 'relative' }}>
-      {w ? (
+      {w && marker ? <Flight {...{ w, height, q, p, thickness, track, color: last, glow, marker, markerSize, id, ink: accent }} /> : null}
+      {w && !marker ? (
         <svg width={w} height={height} aria-hidden style={{ display: 'block', overflow: 'visible' }}>
           <defs>
             <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
@@ -215,15 +240,59 @@ export function Arc({ value, height, thickness, colors, track, glow, marker, mar
           <path d={d} stroke={track} strokeWidth={thickness} fill="none" strokeLinecap="round" strokeDasharray="0.1 8" />
           <motion.path d={d} stroke={`url(#${id})`} strokeWidth={thickness} fill="none" strokeLinecap="round" strokeDasharray={`${len} ${len}`} style={{ strokeDashoffset: offset }} />
           {glow ? <motion.circle cx={mx} cy={my} r={thickness * 3.4} fill={last} opacity={0.22} /> : null}
-          {marker ? null : <motion.circle cx={mx} cy={my} r={thickness * 1.5} fill="#FFFFFF" stroke={last} strokeWidth={thickness * 0.8} />}
+          <motion.circle cx={mx} cy={my} r={thickness * 1.5} fill="#FFFFFF" stroke={last} strokeWidth={thickness * 0.8} />
         </svg>
       ) : null}
-      {w && marker ? (
-        <motion.div style={{ position: 'absolute', left: 0, top: 0, width: markerSize, height: markerSize, x: rx, y: ry, rotate: tilt }}>
-          <Mark name={marker} size={markerSize} color={accent} />
-        </motion.div>
-      ) : null}
     </div>
+  );
+}
+
+/** With a marker (a plane): the route ahead is dotted, a comet tail trails behind, and the marker flies nose-first in a halo with speed streaks. */
+function Flight({ w, height, q, p, thickness, track, color, glow, marker, markerSize, id, ink }: {
+  w: number; height: number; q: ReturnType<typeof quad>; p: MotionValue<number>; thickness: number; track: string; color: string; glow: boolean; marker: string; markerSize: number; id: string; ink: string;
+}) {
+  const ahead = useTransform(p, (t) => q.segment(t, 1));
+  const flown = useTransform(p, (t) => q.segment(0, Math.max(t, 0.0001)));
+  const t0 = useTransform(p, (t) => q.segment(Math.max(0, t - REACH * TAIL[0].length), Math.max(t, 0.0001)));
+  const t1 = useTransform(p, (t) => q.segment(Math.max(0, t - REACH * TAIL[1].length), Math.max(t, 0.0001)));
+  const t2 = useTransform(p, (t) => q.segment(Math.max(0, t - REACH * TAIL[2].length), Math.max(t, 0.0001)));
+  const t3 = useTransform(p, (t) => q.segment(Math.max(0, t - REACH * TAIL[3].length), Math.max(t, 0.0001)));
+  const box = { w: markerSize * 3.4, h: markerSize * 1.8 };
+  const rx = useTransform(p, (t) => q.at(t)[0] - box.w / 2);
+  const ry = useTransform(p, (t) => q.at(t)[1] - box.h / 2);
+  const rotate = useTransform(p, (t) => { const [dx, dy] = q.slope(t); return (Math.atan2(dy, dx) * 180) / Math.PI; });
+  const [sx, sy] = q.at(0);
+  const [ex, ey] = q.at(1);
+  return (
+    <>
+      <svg width={w} height={height} aria-hidden style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          <radialGradient id={`${id}-end`}>
+            <stop offset="0" stopColor={color} stopOpacity={0.55} />
+            <stop offset="1" stopColor={color} stopOpacity={0} />
+          </radialGradient>
+        </defs>
+        <motion.path d={ahead} stroke={track} strokeWidth={thickness} fill="none" strokeLinecap="round" strokeDasharray={`0.1 ${thickness * 3.2}`} />
+        <motion.path d={flown} stroke={color} strokeOpacity={0.18} strokeWidth={thickness * 0.6} fill="none" strokeLinecap="round" />
+        {[t0, t1, t2, t3].map((d, i) => <motion.path key={i} d={d} stroke={color} strokeOpacity={TAIL[i].opacity} strokeWidth={thickness * TAIL[i].width} fill="none" strokeLinecap="round" />)}
+        <circle cx={sx} cy={sy} r={thickness * 1.1} fill={color} />
+        <circle cx={ex} cy={ey} r={Math.min(thickness * 4.5, height - ey)} fill={`url(#${id}-end)`} />
+        <circle cx={ex} cy={ey} r={thickness * 1.5} fill="none" stroke="#FFFFFF" strokeOpacity={0.75} strokeWidth={thickness * 0.6} />
+      </svg>
+      <motion.div style={{ position: 'absolute', left: 0, top: 0, width: box.w, height: box.h, x: rx, y: ry, rotate, pointerEvents: 'none' }}>
+        {[-0.3, 0, 0.3].map((lane, i) => {
+          const length = markerSize * (i === 1 ? 1.3 : 0.85);
+          return <span key={i} className="hi-streak" style={{ left: box.w / 2 - markerSize * 0.4 - length, top: box.h / 2 + lane * markerSize - 1, width: length, animationDelay: `${-i * 0.37 * 1.1}s`, ['--hi-wind' as string]: `${-markerSize * 0.6}px` }} />;
+        })}
+        {glow ? (
+          <span className="hi-halo" style={{ left: box.w / 2 - markerSize, top: box.h / 2 - markerSize, width: markerSize * 2, height: markerSize * 2,
+            background: `radial-gradient(closest-side, rgba(255,255,255,.45), ${alpha(color, 0.55)} 22%, ${alpha(color, 0.16)} 55%, transparent)` }} />
+        ) : null}
+        <span className="hi-ride" style={{ position: 'absolute', left: (box.w - markerSize) / 2, top: (box.h - markerSize) / 2 }}>
+          <Mark name={marker} size={markerSize} color={ink} />
+        </span>
+      </motion.div>
+    </>
   );
 }
 
@@ -373,6 +442,101 @@ export function Pet({ mood = 'idle', size, color, cheeks }: { mood?: string; siz
       <motion.path d={leftEye} fill={ink} style={{ transition: 'fill .3s' }} />
       <motion.path d={rightEye} fill={ink} style={{ transition: 'fill .3s' }} />
     </svg>
+  );
+}
+
+// endregion
+
+// region Sky
+
+/** Cloud puffs on a 100×70 grid: [cx, cy, r]. Back row first, so the front row overlaps it. */
+const PUFFS: [number, number, number][] = [[34, 38, 17], [70, 36, 19], [52, 28, 24], [27, 48, 15], [50, 50, 17], [76, 48, 15]];
+const CLOUD = {
+  light: ['#FFFFFF', '#DCE1E9', '#8A92A1'],
+  rain: ['#E6E9EF', '#9DA5B4', '#4B5262'],
+  storm: ['#B9C0CC', '#6B7385', '#2C313D'],
+};
+
+/** A weather illustration drawn from light: top-lit cloud puffs with a shaded underside, a blooming sun, rain, lightning. */
+export function Sky({ condition, size }: { condition: string; size: number }) {
+  const width = Math.round(size * 1.15);
+  const c = ['clear', 'partly', 'cloudy', 'rain', 'storm'].includes(condition) ? condition : 'cloudy';
+  const k = width / 100;
+  const wet = c === 'rain' || c === 'storm';
+  return (
+    <div style={{ width, height: size, position: 'relative', flexShrink: 0 }}>
+      <AnimatePresence initial={false}>
+        <motion.div key={c} initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.6 } }} exit={{ opacity: 0, transition: { duration: 0.4 } }} style={{ position: 'absolute', inset: 0 }}>
+          {c === 'clear' || c === 'partly' ? <Sun x={c === 'clear' ? 50 : 66} y={c === 'clear' ? 35 : 24} r={c === 'clear' ? 20 : 15} k={k} /> : null}
+          {c !== 'clear' ? <div className="hi-drift" style={{ position: 'absolute', inset: 0, ['--hi-drift' as string]: `${size * 0.025}px` }}><Cloud k={k} width={width} height={size} tone={wet ? (c as 'rain' | 'storm') : 'light'} small={c === 'partly'} /></div> : null}
+          {wet ? [22, 34, 46, 58, 70, 82, 40, 64].map((x, i) => (
+            <span key={i} className="hi-drop" style={{ left: x * k, top: 60 * k, height: size * 0.12, animationDelay: `${i * 0.13}s`, ['--hi-fall' as string]: `${size * 0.26}px` }} />
+          )) : null}
+          {c === 'storm' ? (
+            <svg className="hi-bolt" width={width} height={size} aria-hidden style={{ position: 'absolute', inset: 0 }}>
+              <path d={`M${56 * k},${50 * k} L${46 * k},${66 * k} L${53 * k},${66 * k} L${47 * k},${80 * k} L${62 * k},${61 * k} L${55 * k},${61 * k} L${61 * k},${50 * k} Z`} fill="#FFE27A" stroke="#FFF6CC" strokeWidth={0.8} strokeLinejoin="round" />
+            </svg>
+          ) : null}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Cloud({ k, width, height, tone, small }: { k: number; width: number; height: number; tone: keyof typeof CLOUD; small: boolean }) {
+  const id = useId();
+  const [hi, mid, lo] = CLOUD[tone];
+  const dark = tone !== 'light';
+  // A partly cloudy sky shows a smaller cloud, low and left, so the sun stays visible.
+  const s = small ? 0.78 : 1;
+  const ox = small ? -4 : 0, oy = small ? 10 : 0;
+  const P = (n: number) => n * k;
+  const puffs = PUFFS.map(([x, y, r]) => [P(x * s + ox + (1 - s) * 50), P(y * s + oy + (1 - s) * 35), P(r * s)] as const);
+  const base = { x: P(16 * s + ox + (1 - s) * 50), y: P(46 * s + oy + (1 - s) * 35), w: P(70 * s), h: P(18 * s) };
+  return (
+    <svg width={width} height={height} aria-hidden style={{ display: 'block', overflow: 'visible' }}>
+      <defs>
+        <radialGradient id={`${id}-puff`} gradientUnits="userSpaceOnUse" cx={P(50)} cy={P(36)} r={P(46 * s)} fx={P(40)} fy={P(16 + oy)}>
+          <stop offset="0" stopColor={hi} />
+          <stop offset="0.55" stopColor={mid} />
+          <stop offset="1" stopColor={lo} />
+        </radialGradient>
+        <radialGradient id={`${id}-lit`}>
+          <stop offset="0" stopColor="#FFFFFF" stopOpacity={dark ? 0.28 : 0.5} />
+          <stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+        </radialGradient>
+        <linearGradient id={`${id}-shade`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0.45" stopColor="#0B0E14" stopOpacity={0} />
+          <stop offset="1" stopColor="#0B0E14" stopOpacity={dark ? 0.55 : 0.4} />
+        </linearGradient>
+        <clipPath id={`${id}-clip`}>
+          {puffs.map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} />)}
+          <rect x={base.x} y={base.y} width={base.w} height={base.h} rx={base.h / 2} />
+        </clipPath>
+        <radialGradient id={`${id}-glow`}>
+          <stop offset="0" stopColor={hi} stopOpacity={dark ? 0.1 : 0.18} />
+          <stop offset="1" stopColor={hi} stopOpacity={0} />
+        </radialGradient>
+      </defs>
+      <ellipse cx={P(52)} cy={P(42)} rx={P(52 * s)} ry={P(34 * s)} fill={`url(#${id}-glow)`} />
+      <g clipPath={`url(#${id}-clip)`}>
+        <rect width={width} height={height} fill={`url(#${id}-puff)`} />
+        {puffs.map(([x, y, r], i) => <circle key={i} cx={x - r * 0.18} cy={y - r * 0.32} r={r * 0.72} fill={`url(#${id}-lit)`} />)}
+        <rect width={width} height={height} fill={`url(#${id}-shade)`} />
+      </g>
+    </svg>
+  );
+}
+
+function Sun({ x, y, r, k }: { x: number; y: number; r: number; k: number }) {
+  const R = r * k * 2.6;
+  return (
+    <>
+      <span className="hi-breathe" style={{ position: 'absolute', left: x * k - R, top: y * k - R, width: R * 2, height: R * 2, borderRadius: '50%',
+        background: 'radial-gradient(closest-side, rgba(255,216,77,.55), rgba(255,159,10,.18) 40%, transparent)' }} />
+      <span style={{ position: 'absolute', left: (x - r) * k, top: (y - r) * k, width: r * k * 2, height: r * k * 2, borderRadius: '50%',
+        background: 'radial-gradient(circle at 40% 35%, #FFFCEB, #FFD84D 45%, #FF9F0A)' }} />
+    </>
   );
 }
 

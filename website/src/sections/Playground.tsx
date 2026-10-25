@@ -8,7 +8,7 @@ import { Island } from '../island/Island';
 import { Head, Rise } from '../ui';
 
 const SWATCHES = ['#8B7CFF', '#FF375F', '#30D158', '#FF9F0A', '#5AC8FA', '#FFD60A', '#F4F2EC'];
-const MOTIONS: Exclude<Motion, object>[] = ['island', 'bouncy', 'snappy', 'smooth'];
+const MOTIONS: Exclude<Motion, object>[] = ['minimal', 'island', 'bouncy', 'snappy', 'smooth'];
 const GREY = '#8E8E93';
 
 interface Opts { accent: string; material: 'solid' | 'glass'; aura: boolean; glow: boolean; motion: Exclude<Motion, object>; mood: Mood }
