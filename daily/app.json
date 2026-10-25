@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "Halo",
+    "slug": "halo-daily",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0A0B",
+    "scheme": "halodaily",
+    "android": {
+      "package": "dev.haloisland.daily",
+      "adaptiveIcon": {
+        "backgroundColor": "#05050A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["android.permission.ACTIVITY_RECOGNITION"],
+      "intentFilters": [
+        { "action": "SEND", "category": ["DEFAULT"], "data": [{ "mimeType": "*/*" }] }
+      ]
+    },
+    "plugins": [
+      [
+        "halo-island",
+        {
+          "overlay": true,
+          "overlayReason": "Shows your day (Claude Code, builds, steps, food) as a floating island over other apps."
+        }
+      ],
+      [
+        "expo-build-properties",
+        { "android": { "usesCleartextTraffic": true } }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "../node_modules/@expo-google-fonts/inter-tight/300Light/InterTight_300Light.ttf",
+            "../node_modules/@expo-google-fonts/inter-tight/400Regular/InterTight_400Regular.ttf",
+            "../node_modules/@expo-google-fonts/inter-tight/500Medium/InterTight_500Medium.ttf",
+            "../node_modules/@expo-google-fonts/inter-tight/600SemiBold/InterTight_600SemiBold.ttf"
+          ]
+        }
+      ]
+    ]
+  }
+}

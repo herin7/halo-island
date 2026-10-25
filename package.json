@@ -1,5 +1,5 @@
 {
   "name": "halo-island-monorepo",
   "private": true,
-  "workspaces": ["packages/*", "example"]
+  "workspaces": ["packages/*", "example", "daily"]
 }
