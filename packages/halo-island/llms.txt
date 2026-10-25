@@ -38,11 +38,12 @@ ring(value0to1, { size thickness color track })
 bar(value, { height color track }) | track(value, markerIconOrAsset?, { end flip markerSize height color track }) | steps(value, count, opts)
 stack(style?, ...kids)  first child sizes, rest centered on it (value inside a ring)
 bars(values, { active height gap color track animate }) | line(values, { height color fill thickness })
-arc(value, { height thickness colors[] track glow marker markerSize }) | timeline(value, icons[], { size color track ink })
+arc(value, { height thickness colors[] track glow marker markerSize })  marker 'airliner' = flight: dotted route ahead, comet tail, halo | timeline(value, icons[], { size color track ink })
 timer(toEpochMs, { countUp style })
 button(action, label?, { icon color textColor tint confirm shape(pill|tile|circle) })
 chips(bind, options[], { values[] color }) | slider(bind, { icon color track height }) | toggle(bind, label, { icon color })
 pet(mood?, { size color cheeks })  moods: idle happy love sleepy surprised thinking wink sad focused
+sky(condition, { size })  condition: clear partly cloudy rain storm (or '{key}')
 lottie(uri, { size width loop speed }) | rive(uri, { size width artboard stateMachine trigger inputs }) | spacer(size?)
 fx(node, 'pulse'|'bounce'|'spin'|'wiggle'|'shimmer') | when('key' | '!key', node)
 
@@ -52,11 +53,11 @@ fx(node, 'pulse'|'bounce'|'spin'|'wiggle'|'shimmer') | when('key' | '!key', node
 - confirm: first tap shows the confirm text, second tap fires.
 
 ## Theme
-{ background foreground secondary accent border radius glow gradient[] material('solid'|'glass') aura fonts{regular..heavy} light{} dark{} }
+{ background foreground secondary accent border radius compactHeight glow gradient[] material('solid'|'glass') aura fonts{regular..heavy} light{} dark{} }
 Colors: any RN color string. HaloIslandHost theme = base; template theme wins.
 
 ## Motion
-'island' (default) | 'bouncy' | 'snappy' | 'smooth' | 'none' | { stiffness, damping }
+'minimal' (critically damped, no flourishes) | 'island' (default) | 'bouncy' | 'snappy' | 'smooth' | 'none' | { stiffness, damping }
 
 ## Truthiness (show, toggles)
 Off: '' 0 false null undefined 'false' '0'. Everything else is on. '!key' inverts.

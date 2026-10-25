@@ -75,7 +75,7 @@ export function InSync({ width }: { width: number }) {
   return (
     <View style={[s.sync, { width }]}>
       <View style={s.syncHead}>
-        <View style={s.syncMark}><Glyph name="airplane-tilt" size={22} color={BLUE} /></View>
+        <View style={s.syncMark}><Glyph name="airliner" size={22} color={BLUE} /></View>
         <View style={{ flex: 1, gap: 2 }}>
           <Animated.Text key={state.status} entering={FadeIn.duration(220)} exiting={FadeOut.duration(120)} style={s.syncStatus} numberOfLines={1}>{state.status}</Animated.Text>
           <Text style={s.syncItems} numberOfLines={1}>6E 2134 · BLR → DEL</Text>

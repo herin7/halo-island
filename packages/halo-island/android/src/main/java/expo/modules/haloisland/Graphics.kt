@@ -5,16 +5,20 @@ import android.content.Context
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.SystemClock
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import androidx.core.content.ContextCompat
 import kotlin.math.asin
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -354,4 +358,244 @@ internal fun parseValues(raw: Any?, state: org.json.JSONObject): FloatArray = wh
   is org.json.JSONArray -> FloatArray(raw.length()) { num(raw.opt(it), state) }
   is String -> fill(raw, state).split(',').mapNotNull { it.trim().toFloatOrNull() }.toFloatArray()
   else -> FloatArray(0)
+}
+
+/**
+ * An arc with an object flying it (a plane): dotted route ahead, a comet tail behind, the marker
+ * nose-first along the tangent inside a breathing halo, with streaks of air rushing past.
+ * Same geometry as the in-app Arc, so both surfaces draw the same flight.
+ */
+internal class FlightArcView(context: Context, private val color: Int, private val track: Int, private val thicknessDp: Float, private val glow: Boolean, marker: String, private val markerDp: Float, private val ink: Int) : View(context) {
+  private val density = resources.displayMetrics.density
+  private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+  private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val route = Path()
+  private val plane = drawableId(context, marker).takeIf { it != 0 }?.let { ContextCompat.getDrawable(context, it)?.mutate()?.apply { setTint(ink) } }
+  private var value = 0f
+  private var clock: ValueAnimator? = null
+
+  fun set(v: Float) { value = v.coerceIn(0f, 1f); invalidate() }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    if (!ValueAnimator.areAnimatorsEnabled()) return
+    clock = ValueAnimator.ofFloat(0f, 1f).apply {
+      duration = 1000
+      repeatCount = ValueAnimator.INFINITE
+      interpolator = null
+      addUpdateListener { invalidate() }
+      start()
+    }
+  }
+
+  override fun onDetachedFromWindow() {
+    clock?.cancel()
+    clock = null
+    super.onDetachedFromWindow()
+  }
+
+  override fun onDraw(canvas: Canvas) {
+    val t = thicknessDp * density
+    val ms = markerDp * density
+    val x0 = ms * 0.5f
+    val x1 = width - ms * 0.5f
+    val y0 = height - ms * 0.3f
+    val cx = width / 2f
+    val cy = 2 * ms * 0.6f - y0
+    fun at(u: Float) = floatArrayOf((1 - u) * (1 - u) * x0 + 2 * (1 - u) * u * cx + u * u * x1, (1 - u) * (1 - u) * y0 + 2 * (1 - u) * u * cy + u * u * y0)
+    fun slope(u: Float) = floatArrayOf(2 * (1 - u) * (cx - x0) + 2 * u * (x1 - cx), 2 * (1 - u) * (cy - y0) + 2 * u * (y0 - cy))
+    fun segment(a: Float, b: Float): Path {
+      val p = at(a); val e = at(b); val s = slope(a); val k = (b - a) / 2
+      return route.apply { reset(); moveTo(p[0], p[1]); quadTo(p[0] + s[0] * k, p[1] + s[1] * k, e[0], e[1]) }
+    }
+    val v = value
+    val now = SystemClock.uptimeMillis()
+    // Idle: a 2.6s swell for bob and halo, a 1.1s cycle for the air.
+    val idle = if (clock != null) ((sin(now / 2600.0 * Math.PI * 2) + 1) / 2).toFloat() else 0.5f
+    val wind = if (clock != null) (now % 1100L) / 1100f else 0.35f
+
+    // Ahead: dotted.
+    stroke.shader = null
+    stroke.color = track
+    stroke.strokeWidth = t
+    stroke.pathEffect = DashPathEffect(floatArrayOf(0.1f, t * 3.2f), 0f)
+    canvas.drawPath(segment(v, 1f), stroke)
+    stroke.pathEffect = null
+    // Behind: a faint route under a comet tail that brightens toward the plane.
+    if (v > 0f) {
+      stroke.color = withAlpha(color, 0.18f)
+      stroke.strokeWidth = t * 0.6f
+      canvas.drawPath(segment(0f, v), stroke)
+      for ((length, w, a) in TAIL) {
+        stroke.color = withAlpha(color, a)
+        stroke.strokeWidth = t * w
+        canvas.drawPath(segment(max(0f, v - 0.28f * length), v), stroke)
+      }
+    }
+    // Ends: origin dot, destination ring in a soft glow.
+    val s = at(0f); val e = at(1f)
+    fill.shader = null
+    fill.color = color
+    canvas.drawCircle(s[0], s[1], t * 1.1f, fill)
+    // Clamped to the room below the end, or the glow would be cut square at the edge.
+    val glowR = min(t * 4.5f, height - e[1])
+    fill.shader = RadialGradient(e[0], e[1], glowR, withAlpha(color, 0.55f), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+    canvas.drawCircle(e[0], e[1], glowR, fill)
+    stroke.color = withAlpha(Color.WHITE, 0.75f)
+    stroke.strokeWidth = t * 0.6f
+    canvas.drawCircle(e[0], e[1], t * 1.5f, stroke)
+
+    // The rider, in its own frame: +x is the direction of travel.
+    val p = at(v); val d = slope(v)
+    canvas.save()
+    canvas.translate(p[0], p[1])
+    canvas.rotate(Math.toDegrees(atan2(d[1].toDouble(), d[0].toDouble())).toFloat())
+    for ((i, lane) in floatArrayOf(-0.3f, 0f, 0.3f).withIndex()) {
+      val phase = (wind + i * 0.37f) % 1f
+      val length = ms * (if (i == 1) 1.3f else 0.85f)
+      val end = -ms * 0.4f - phase * ms * 0.6f
+      val y = lane * ms
+      val alpha = (sin(phase * Math.PI) * 0.9).toFloat()
+      stroke.shader = LinearGradient(end - length, y, end, y, Color.TRANSPARENT, withAlpha(Color.WHITE, alpha), Shader.TileMode.CLAMP)
+      stroke.strokeWidth = 1.4f * density
+      canvas.drawLine(end - length, y, end, y, stroke)
+    }
+    stroke.shader = null
+    if (glow) {
+      val r = ms * (0.92f + idle * 0.12f)
+      val k = 0.7f + idle * 0.3f
+      // Bloom: a white-hot core bleeding into the brand color, then nothing.
+      fill.shader = RadialGradient(0f, 0f, r, intArrayOf(withAlpha(Color.WHITE, 0.45f * k), withAlpha(color, 0.55f * k), withAlpha(color, 0.16f * k), Color.TRANSPARENT), floatArrayOf(0f, 0.22f, 0.55f, 1f), Shader.TileMode.CLAMP)
+      canvas.drawCircle(0f, 0f, r, fill)
+      fill.shader = null
+    }
+    plane?.let {
+      canvas.translate(0f, (idle - 0.5f) * 1.6f * density)
+      canvas.rotate((idle - 0.5f) * 3f)
+      val h = (ms / 2).toInt()
+      it.setBounds(-h, -h, h, h)
+      it.draw(canvas)
+    }
+    canvas.restore()
+  }
+
+  private companion object {
+    /** Comet tail layers: share of the reach, stroke width (× thickness), opacity. */
+    val TAIL = listOf(Triple(1f, 0.6f, 0.14f), Triple(0.62f, 1f, 0.22f), Triple(0.36f, 1.5f, 0.36f), Triple(0.16f, 2f, 0.6f))
+  }
+}
+
+/**
+ * Weather drawn from light — same scene as the in-app Sky: a top-lit cloud volume with shade
+ * pooling underneath, a blooming sun, falling rain and storm flashes. 100 × 87 grid.
+ */
+internal class SkyView(context: Context) : View(context) {
+  private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val cloud = Path()
+  private var condition = "cloudy"
+  private var clock: ValueAnimator? = null
+
+  fun set(next: String) {
+    condition = if (next in setOf("clear", "partly", "cloudy", "rain", "storm")) next else "cloudy"
+    invalidate()
+  }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    if (!ValueAnimator.areAnimatorsEnabled()) return
+    clock = ValueAnimator.ofFloat(0f, 1f).apply { duration = 1000; repeatCount = ValueAnimator.INFINITE; interpolator = null; addUpdateListener { invalidate() }; start() }
+  }
+
+  override fun onDetachedFromWindow() {
+    clock?.cancel()
+    clock = null
+    super.onDetachedFromWindow()
+  }
+
+  override fun onDraw(canvas: Canvas) {
+    val k = width / 100f
+    val now = SystemClock.uptimeMillis()
+    val live = clock != null
+    val swell = if (live) ((sin(now / 6000.0 * Math.PI * 2) + 1) / 2).toFloat() else 0.5f
+    if (condition == "clear" || condition == "partly") {
+      val clear = condition == "clear"
+      sun(canvas, (if (clear) 50f else 66f) * k, (if (clear) 35f else 24f) * k, (if (clear) 20f else 15f) * k, swell)
+    }
+    if (condition == "clear") return
+    val tone = when (condition) {
+      "storm" -> intArrayOf(Color.parseColor("#B9C0CC"), Color.parseColor("#6B7385"), Color.parseColor("#2C313D"))
+      "rain" -> intArrayOf(Color.parseColor("#E6E9EF"), Color.parseColor("#9DA5B4"), Color.parseColor("#4B5262"))
+      else -> intArrayOf(Color.WHITE, Color.parseColor("#DCE1E9"), Color.parseColor("#8A92A1"))
+    }
+    val s = if (condition == "partly") 0.78f else 1f
+    val ox = if (condition == "partly") -4f else 0f
+    val oy = if (condition == "partly") 10f else 0f
+    fun X(v: Float) = (v * s + ox + (1 - s) * 50) * k
+    fun Y(v: Float) = (v * s + oy + (1 - s) * 35) * k
+    canvas.save()
+    canvas.translate((swell - 0.5f) * width * 0.04f, 0f)
+    // One path for the whole cloud, so the puffs light as a single volume.
+    cloud.reset()
+    for ((x, y, r) in PUFFS) cloud.addCircle(X(x), Y(y), r * s * k, Path.Direction.CW)
+    cloud.addRoundRect(X(16f), Y(46f), X(16f) + 70 * s * k, Y(46f) + 18 * s * k, 9 * s * k, 9 * s * k, Path.Direction.CW)
+    paint.shader = RadialGradient(40 * k, (16 + oy) * k, 52 * s * k, tone, floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+    canvas.drawPath(cloud, paint)
+    canvas.save()
+    canvas.clipPath(cloud)
+    for ((x, y, r) in PUFFS) {
+      val R = r * s * k
+      paint.shader = RadialGradient(X(x) - R * 0.18f, Y(y) - R * 0.32f, R * 0.72f, withAlpha(Color.WHITE, if (condition == "cloudy" || condition == "partly") 0.5f else 0.28f), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+      canvas.drawCircle(X(x) - R * 0.18f, Y(y) - R * 0.32f, R * 0.72f, paint)
+    }
+    paint.shader = LinearGradient(0f, height * 0.45f, 0f, Y(64f), Color.TRANSPARENT, withAlpha(Color.parseColor("#0B0E14"), if (condition == "cloudy" || condition == "partly") 0.4f else 0.55f), Shader.TileMode.CLAMP)
+    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+    canvas.restore()
+    canvas.restore()
+    paint.shader = null
+    if (condition == "rain" || condition == "storm") {
+      val fall = height * 0.26f
+      val len = height * 0.12f
+      for ((i, x) in floatArrayOf(22f, 34f, 46f, 58f, 70f, 82f, 40f, 64f).withIndex()) {
+        val p = if (live) ((now + i * 130L) % 820L) / 820f else 0.5f
+        val e = p * p
+        val dx = x * k - e * fall * 0.18f
+        val dy = 60 * k + e * fall
+        paint.shader = LinearGradient(dx, dy, dx - len * 0.17f, dy + len, Color.TRANSPARENT, withAlpha(Color.parseColor("#CFE9FF"), 0.95f * sin(p * Math.PI).toFloat()), Shader.TileMode.CLAMP)
+        paint.strokeWidth = 2f * density()
+        paint.strokeCap = Paint.Cap.ROUND
+        canvas.drawLine(dx, dy, dx - len * 0.17f, dy + len, paint)
+      }
+      paint.shader = null
+    }
+    if (condition == "storm" && live) {
+      // Dark, then a double flash every few seconds.
+      val t = now % 3060L
+      val flash = when { t < 2600 -> 0f; t < 2660 -> 1f; t < 2750 -> 0.2f; t < 2800 -> 1f; else -> 1f - (t - 2800) / 260f }
+      if (flash > 0f) {
+        val bolt = Path().apply {
+          moveTo(56 * k, 50 * k); lineTo(46 * k, 66 * k); lineTo(53 * k, 66 * k); lineTo(47 * k, 80 * k)
+          lineTo(62 * k, 61 * k); lineTo(55 * k, 61 * k); lineTo(61 * k, 50 * k); close()
+        }
+        paint.style = Paint.Style.FILL
+        paint.color = withAlpha(Color.parseColor("#FFE27A"), flash)
+        canvas.drawPath(bolt, paint)
+      }
+    }
+  }
+
+  private fun sun(canvas: Canvas, x: Float, y: Float, r: Float, swell: Float) {
+    val bloom = r * 2.6f * (0.95f + swell * 0.1f)
+    paint.shader = RadialGradient(x, y, bloom, intArrayOf(withAlpha(Color.parseColor("#FFD84D"), 0.55f), withAlpha(Color.parseColor("#FF9F0A"), 0.18f), Color.TRANSPARENT), floatArrayOf(0f, 0.4f, 1f), Shader.TileMode.CLAMP)
+    canvas.drawCircle(x, y, bloom, paint)
+    paint.shader = RadialGradient(x - r * 0.2f, y - r * 0.3f, r * 1.1f, intArrayOf(Color.parseColor("#FFFCEB"), Color.parseColor("#FFD84D"), Color.parseColor("#FF9F0A")), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+    canvas.drawCircle(x, y, r, paint)
+    paint.shader = null
+  }
+
+  private fun density() = resources.displayMetrics.density
+
+  private companion object {
+    /** Cloud puffs on the 100-wide grid: cx, cy, r. */
+    val PUFFS = listOf(Triple(34f, 38f, 17f), Triple(70f, 36f, 19f), Triple(52f, 28f, 24f), Triple(27f, 48f, 15f), Triple(50f, 50f, 17f), Triple(76f, 48f, 15f))
+  }
 }

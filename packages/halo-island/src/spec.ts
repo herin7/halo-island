@@ -111,6 +111,11 @@ type NodeBody =
    * `compact.leading` and the island itself becomes a character. In-app renderer only.
    */
   | { type: 'pet'; mood?: string; size?: number; color?: Color; cheeks?: Color }
+  /**
+   * Weather drawn from light: top-lit volumetric clouds, a blooming sun, falling rain, storm flashes.
+   * `condition`: clear · partly · cloudy · rain · storm (or a `{key}`); changes cross-fade.
+   */
+  | { type: 'sky'; condition: string; size?: number }
   /** A sparkline with a soft gradient under it. `values` 0–1, array or comma list. */
   | { type: 'line'; values: Num[] | string; height?: number; color?: Color; fill?: boolean; thickness?: number }
   /**
@@ -131,6 +136,11 @@ export interface IslandTheme {
   border?: Color;
   /** Expanded corner radius. Compact is always a full pill. */
   radius?: number;
+  /**
+   * Compact pill height in points: 37 matches the iPhone hardware island; 24–30 makes a slimmer pill.
+   * Never smaller than its content, and on iOS never smaller than the camera it wraps.
+   */
+  compactHeight?: number;
   /** Border breathes in this color. */
   glow?: Color;
   /** Island fill as a gradient (overrides background). */
@@ -167,7 +177,7 @@ export function fontFor(fonts: IslandTheme['fonts'], weight: Weight = 'regular')
   return nearest.map((w) => fonts[w]).find(Boolean);
 }
 
-export type MotionPreset = 'island' | 'bouncy' | 'snappy' | 'smooth' | 'none';
+export type MotionPreset = 'minimal' | 'island' | 'bouncy' | 'snappy' | 'smooth' | 'none';
 export type Motion = MotionPreset | { stiffness: number; damping: number };
 
 export interface IslandTemplate {
@@ -199,6 +209,7 @@ export const DEFAULT_THEME: Required<Omit<IslandTheme, 'light' | 'dark'>> = {
   /** Empty = the key line takes the accent color, as Apple recommends. */
   border: '',
   radius: 40,
+  compactHeight: 37,
   glow: '',
   gradient: [],
   fonts: {},
@@ -261,6 +272,7 @@ export const bar = (value: Num, opts?: { height?: number; color?: Color; track?:
 export const steps = (value: Num, count: number, opts?: { height?: number; color?: Color; track?: Color }): IslandNode => ({ type: 'steps', value, count, ...opts });
 export const timer = (to: Num, opts?: { countUp?: boolean; style?: TextStyle }): IslandNode => ({ type: 'timer', to, ...opts });
 export const button = (action: string, label?: string, opts?: { icon?: string; color?: Color; textColor?: Color; tint?: boolean; confirm?: string; shape?: 'pill' | 'tile' | 'circle' }): IslandNode => ({ type: 'button', action, label, ...opts });
+export const sky = (condition: string, opts?: { size?: number }): IslandNode => ({ type: 'sky', condition, ...opts });
 export const pet = (mood?: string, opts?: { size?: number; color?: Color; cheeks?: Color }): IslandNode => ({ type: 'pet', mood, ...opts });
 export const line = (values: Num[] | string, opts?: { height?: number; color?: Color; fill?: boolean; thickness?: number }): IslandNode => ({ type: 'line', values, ...opts });
 export const chips = (bind: string, options: string[], opts?: { values?: string[]; color?: Color }): IslandNode => ({ type: 'chips', bind, options, ...opts });

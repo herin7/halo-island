@@ -45,6 +45,8 @@ internal class Theme(json: JSONObject?) {
   /** Unset key line takes the accent, as Apple recommends. */
   val border = json.color("border", withAlpha(accent, 0.3f))
   val radius = json?.optDouble("radius", 32.0)?.toFloat() ?: 32f
+  /** Compact pill height in dp; the pill never gets shorter than its content. */
+  val compactHeight = json?.optDouble("compactHeight", 38.0)?.toFloat() ?: 38f
   /** Light pooling at the bottom of the expanded island; transparent when unset. */
   val aura = json.color("aura", Color.TRANSPARENT)
   private val fonts = json?.optJSONObject("fonts")
@@ -139,7 +141,10 @@ internal class Renderer(
       "rive" -> rive(node, path)
       "bars" -> BarsView(context, node.color("color", theme.accent), node.color("track", withAlpha(node.color("color", theme.accent), 0.18f)), node.optDouble("gap", 3.0).toFloat(), node.optBoolean("animate"))
         .also { v -> val values = parseValues(node.opt("values"), state); v.set(values, if (node.has("active")) num(node.opt("active"), state).toInt() else Int.MAX_VALUE) }
-      "arc" -> ArcView(context, colorsOf(node), node.color("track", withAlpha(theme.foreground, 0.12f)), node.optDouble("thickness", 5.0).toFloat(), node.optBoolean("glow", true))
+      "arc" -> if (node.optString("marker").isNotEmpty()) FlightArcView(context, colorsOf(node).last(), node.color("track", withAlpha(theme.foreground, 0.12f)), node.optDouble("thickness", 5.0).toFloat(),
+          node.optBoolean("glow", true), fill(node.optString("marker"), state), node.optDouble("markerSize", 28.0).toFloat(), theme.foreground)
+        .also { animate(it::set, path, num(node.opt("value"), state)) }
+        else ArcView(context, colorsOf(node), node.color("track", withAlpha(theme.foreground, 0.12f)), node.optDouble("thickness", 5.0).toFloat(), node.optBoolean("glow", true))
         .also { animate(it::set, path, num(node.opt("value"), state)) }
       "timeline" -> TimelineView(context, (0 until (node.optJSONArray("icons")?.length() ?: 0)).map { fill(node.optJSONArray("icons")!!.optString(it), state) },
           node.color("color", theme.accent), node.color("track", withAlpha(theme.foreground, 0.14f)), node.color("ink", theme.background), node.optDouble("size", 30.0).toFloat())
@@ -150,6 +155,8 @@ internal class Renderer(
       "spacer" -> View(context)
       "line" -> (reuse(path, node.toString()) { SparklineView(context, node.color("color", theme.accent), node.optDouble("thickness", 2.0).toFloat(), node.optBoolean("fill", true)) } as SparklineView)
         .also { it.set(parseValues(node.opt("values"), state)) }
+      "sky" -> (reuse(path, "sky") { SkyView(context) } as SkyView).apply { set(fill(node.optString("condition"), state)) }
+        .also { val h = node.optInt("size", 72); it.layoutParams = LinearLayout.LayoutParams(px((h * 1.15f).toInt()), px(h)) }
       "pet" -> (reuse(path, "pet") { PetView(context) } as PetView).apply {
           set(fill(node.optString("mood"), state), node.color("color", theme.foreground), node.color("cheeks", Color.parseColor("#FF7A9A")))
           val s = node.optInt("size", 22)

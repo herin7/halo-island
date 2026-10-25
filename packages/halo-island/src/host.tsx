@@ -4,7 +4,8 @@ import { ComponentRef, ComponentType, ReactNode, RefObject, useEffect, useMemo, 
 import { Dimensions, Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useColorScheme, useWindowDimensions } from 'react-native';
 import Animated, { Easing, FadeIn, FadeInDown, FadeOut, FadeOutUp, LinearTransition, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
-import { Arc, Bars, Icon, Pet, Ring, Sparkline, Timeline, alpha, clamp } from './graphics';
+import { Arc, Bars, Icon, Pet, Ring, Sky, Sparkline, Timeline, alpha, clamp } from './graphics';
+import { placeIsland } from './geometry';
 import { Active, AssetSource, Cutout, emitAction, focus, native, nativeJson, resolveAsset, setState, springOf, store } from './island';
 import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTemplate, IslandTheme, Motion, Num, TextStyle, fill, fontFor, num, nums, on, resolveTheme, tracking, visible } from './spec';
 
@@ -78,6 +79,8 @@ interface Ctx {
   touch: () => void;
   /** Previews: pets hold their gaze, so a gallery of them costs nothing while idle. */
   still?: boolean;
+  /** Critically damped motion: controls settle without rebounding. */
+  calm?: boolean;
 }
 
 function Node(props: { node: IslandNode; ctx: Ctx; inRow?: boolean }): ReactNode {
@@ -191,9 +194,11 @@ function Body({ node, ctx, inRow }: { node: IslandNode; ctx: Ctx; inRow?: boolea
       return <View style={{ flexGrow: inRow ? 1 : undefined, alignSelf: 'stretch' }}><Sparkline values={nums(node.values, state)} height={node.height ?? 40} color={node.color ?? theme.accent} fill={node.fill ?? true} thickness={node.thickness ?? 2} /></View>;
     case 'arc':
       return <Arc value={num(node.value, state)} height={node.height ?? 64} thickness={node.thickness ?? 5} colors={node.colors?.length ? node.colors : [theme.accent]} track={node.track ?? alpha(theme.foreground, 0.2)} glow={node.glow ?? true} markerSize={node.markerSize ?? 28}
-        marker={node.marker ? <Mark name={fill(node.marker, state)} size={node.markerSize ?? 28} color={theme.accent} /> : undefined} />;
+        marker={node.marker ? <Mark name={fill(node.marker, state)} size={node.markerSize ?? 28} color={theme.foreground} /> : undefined} />;
     case 'timeline':
       return <View style={{ flexGrow: inRow ? 1 : undefined, alignSelf: 'stretch' }}><Timeline value={num(node.value, state)} icons={node.icons.map((i) => fill(i, state))} size={node.size ?? 30} color={node.color ?? theme.accent} track={node.track ?? alpha(theme.foreground, 0.14)} ink={node.ink ?? theme.background} /></View>;
+    case 'sky':
+      return <Sky condition={fill(node.condition, state)} size={node.size ?? 72} />;
     case 'pet':
       return <Pet mood={node.mood ? fill(node.mood, state) : 'idle'} size={node.size ?? 22} color={node.color ?? theme.foreground} cheeks={node.cheeks ?? '#FF7AB6'} still={ctx.still} />;
     case 'lottie': {
@@ -270,15 +275,36 @@ function textStyle(s: TextStyle | undefined, theme: Theme): RNTextStyle {
   };
 }
 
-/** Springy press feedback for anything tappable inside the island. */
-function usePress(scale = 0.94) {
+/** Press feedback for anything tappable inside the island: springy, or settled when `calm`. */
+function usePress(scale = 0.94, calm = false) {
   const p = useSharedValue(0);
   const style = useAnimatedStyle(() => ({ transform: [{ scale: 1 - (1 - scale) * p.value }] }));
   return {
     style,
     onPressIn: () => { p.value = withSpring(1, { duration: 160, dampingRatio: 1 }); },
-    onPressOut: () => { p.value = withSpring(0, { duration: 380, dampingRatio: 0.5 }); },
+    onPressOut: () => { p.value = withSpring(0, { duration: 380, dampingRatio: calm ? 1 : 0.5 }); },
   };
+}
+
+/**
+ * Depth for a filled control, so it reads as an object rather than a flat shape: light falling from
+ * above, a lit hairline rim, and (when solid) a soft glow of its own color underneath.
+ */
+function depth(color: string, tinted: boolean): ViewStyle {
+  return tinted
+    ? {
+        backgroundColor: alpha(color, 0.2),
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: alpha(color, 0.42),
+        experimental_backgroundImage: `linear-gradient(180deg, ${alpha(color, 0.2)}, ${alpha(color, 0)} 75%)`,
+      }
+    : {
+        backgroundColor: color,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(255,255,255,0.3)',
+        experimental_backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.26), rgba(255,255,255,0) 50%, rgba(0,0,0,0.12))',
+        boxShadow: `0 6px 16px -4px ${alpha(color, 0.55)}`,
+      };
 }
 
 type ButtonNode = Extract<IslandNode, { type: 'button' }>;
@@ -286,7 +312,7 @@ type ButtonNode = Extract<IslandNode, { type: 'button' }>;
 function Button({ node, ctx }: { node: ButtonNode; ctx: Ctx }) {
   const { state, theme } = ctx;
   const [armed, setArmed] = useState(false);
-  const press = usePress(node.shape === 'tile' ? 0.9 : 0.94);
+  const press = usePress(node.shape === 'tile' ? 0.9 : 0.94, ctx.calm);
   useEffect(() => {
     if (!armed) return;
     const t = setTimeout(() => setArmed(false), 3500);
@@ -331,7 +357,7 @@ function Button({ node, ctx }: { node: ButtonNode; ctx: Ctx }) {
     <Pressable onPress={onPress} onPressIn={press.onPressIn} onPressOut={press.onPressOut} style={{ flexGrow: 1 }} {...a11y}>
       <Animated.View
         layout={LinearTransition.springify().dampingRatio(0.75)}
-        style={[styles.button, circle && !armed ? { width: 44, height: 44, borderRadius: 22, paddingHorizontal: 0, alignSelf: 'center' } : { paddingHorizontal: 18 }, { backgroundColor: fillColor }, press.style]}
+        style={[styles.button, circle && !armed ? { width: 44, height: 44, borderRadius: 22, paddingHorizontal: 0, alignSelf: 'center' } : { paddingHorizontal: 18 }, depth(base, !!tinted), press.style]}
       >
         {icon && !armed ? <Mark name={icon} size={isAsset(icon) ? (circle ? 26 : 22) : circle ? 20 : 17} color={ink} /> : null}
         {label ? <Animated.Text key={label} entering={FadeIn.duration(200)} style={textStyle({ weight: 'semibold', color: ink, size: 15 }, theme)} numberOfLines={1}>{label}</Animated.Text> : null}
@@ -359,8 +385,9 @@ function Chips({ node, ctx }: { node: ChipsNode; ctx: Ctx }) {
   }, [index, layouts]);
   const knob = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }], width: w.value, opacity: w.value ? 1 : 0 }));
   return (
-    <View style={{ flexDirection: 'row', alignSelf: 'stretch', backgroundColor: alpha(ctx.theme.foreground, 0.06), borderRadius: 18, padding: 3 }}>
-      <Animated.View style={[{ position: 'absolute', top: 3, bottom: 3, left: 0, borderRadius: 15, backgroundColor: alpha(color, 0.22) }, knob]} />
+    // A recessed track with a lit knob riding in it.
+    <View style={{ flexDirection: 'row', alignSelf: 'stretch', backgroundColor: alpha(ctx.theme.foreground, 0.06), borderRadius: 18, padding: 3, borderWidth: StyleSheet.hairlineWidth, borderColor: alpha(ctx.theme.foreground, 0.08), experimental_backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0.3), rgba(0,0,0,0) 60%)' }}>
+      <Animated.View style={[{ position: 'absolute', top: 3, bottom: 3, left: 0, borderRadius: 15, boxShadow: `0 2px 10px ${alpha(color, 0.3)}` }, depth(color, true), knob]} />
       {node.options.map((option, i) => fill(option, ctx.state)).map((label, i) => (
         <Pressable
           key={i}
@@ -440,7 +467,7 @@ function Toggle({ node, ctx }: { node: ToggleNode; ctx: Ctx }) {
   const value = on(ctx.state[node.bind]);
   const color = node.color ?? theme.accent;
   const t = useSharedValue(value ? 1 : 0);
-  const press = usePress(0.93);
+  const press = usePress(0.93, ctx.calm);
   useEffect(() => { t.value = withSpring(value ? 1 : 0, SNAP); }, [value]);
   const off = alpha(theme.foreground, 0.08);
   const bg = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(t.value, [0, 1], [off, color]) }));
@@ -692,22 +719,22 @@ export type Placement = 'auto' | 'cutout' | 'below';
  * band, so an island there would look right but never respond. Use `cutout` there only when your
  * app hides the status bar.
  */
-function useGeometry(placement: Placement) {
+function useGeometry(placement: Placement, pill = COMPACT_HEIGHT) {
   const { width, height: screenH } = useWindowDimensions();
   const [cutout, setCutout] = useState<Cutout | null>(null);
   const wrap = placement === 'cutout' || (placement === 'auto' && Platform.OS === 'ios');
+  // Re-read on every size change: rotation, fold/unfold and split screen all move the camera.
   useEffect(() => { setCutout(wrap ? native?.getCutout() ?? iosIsland(width, screenH) : null); }, [wrap, width, screenH]);
-  const centered = cutout && Math.abs(cutout.x + cutout.width / 2 - width / 2) < 40 ? cutout : null;
-  const height = Math.max(COMPACT_HEIGHT, (centered?.height ?? 0) + 8);
-  return {
-    cutout: centered,
-    height,
-    top: centered ? centered.y + centered.height / 2 - height / 2 : (Platform.OS === 'android' ? StatusBar.currentHeight ?? 24 : 50) + 6,
-    /** Space kept free in the compact row so content never sits under the camera. */
-    gap: centered ? centered.width + 12 : 16,
-    expandedWidth: Math.min(width - 16, 400),
-    width,
-  };
+  const placed = placeIsland({
+    hole: cutout,
+    screenWidth: width,
+    // `cutout` means the app hides the status bar: with no camera to wrap, the island goes to the
+    // top edge, clear of any cutout's safe inset (a corner camera), like a phone without a notch.
+    statusBar: placement === 'cutout' && Platform.OS === 'android' ? 0 : Platform.OS === 'android' ? StatusBar.currentHeight ?? 24 : 50,
+    safeTop: cutout?.safeTop,
+    pill,
+  });
+  return { ...placed, cutout: placed.hole, expandedWidth: Math.min(width - 16, 400), width };
 }
 
 /**
@@ -734,13 +761,15 @@ export interface HostProps {
    * and `material: 'glass'` blurs what's behind the island (Android 12+). iOS and web need nothing.
    */
   blurTarget?: RefObject<ComponentRef<typeof View> | null>;
+  /** Development aid: outlines the camera hole the island detected, for checking new devices. */
+  debugCutout?: boolean;
 }
 
 /**
  * Renders the active islands inside the app. Mount once at the root, above navigation:
  * `<HaloIslandHost />`.
  */
-export function HaloIslandHost({ placement = 'auto', theme, motion, haptics = true, dim = true, blurTarget: target }: HostProps) {
+export function HaloIslandHost({ placement = 'auto', theme, motion, haptics = true, dim = true, blurTarget: target, debugCutout }: HostProps) {
   hapticsOn = haptics;
   blurTarget = target;
   const list = useSyncExternalStore(store.subscribe, store.all, store.all);
@@ -752,7 +781,7 @@ export function HaloIslandHost({ placement = 'auto', theme, motion, haptics = tr
     return () => clearTimeout(t);
   }, [top]);
   if (!shown) return null;
-  return <Island entry={top ?? shown} leaving={!top} bubble={list.length > 1 ? list[list.length - 2] : null} placement={placement} base={theme} motion={motion} dim={dim} />;
+  return <Island entry={top ?? shown} leaving={!top} bubble={list.length > 1 ? list[list.length - 2] : null} placement={placement} base={theme} motion={motion} dim={dim} debugCutout={debugCutout} />;
 }
 
 const screenIn = (dir: number) => () => {
@@ -776,16 +805,19 @@ const screenOut = (dir: number) => () => {
   };
 };
 
-function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entry: Active; leaving: boolean; bubble: Active | null; placement: Placement; base?: IslandTheme; motion?: Motion; dim: boolean }) {
-  const geo = useGeometry(placement);
-  const reduced = useReducedMotion();
+function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCutout }: { entry: Active; leaving: boolean; bubble: Active | null; placement: Placement; base?: IslandTheme; motion?: Motion; dim: boolean; debugCutout?: boolean }) {
   const scheme = useColorScheme();
   const theme = themeOf(entry.template.theme, base, scheme);
+  const geo = useGeometry(placement, theme.compactHeight);
+  const reduced = useReducedMotion();
   const spring = reduced ? null : springOf(motion ?? entry.template.motion);
+  /** Near-critical damping: no overshoot anywhere, so flourishes settle instead of jiggling. */
+  const calm = !spring || spring.damping / (2 * Math.sqrt(spring.stiffness)) >= 0.95;
   const [expanded, setExpanded] = useState(!!entry.options.expanded);
   const [stack, setStack] = useState<string[]>([]);
   const [dir, setDir] = useState(1);
   const [compact, setCompact] = useState({ width: 0, height: 0 });
+  const [sides, setSides] = useState({ l: 0, r: 0 });
   const [bodyHeight, setBodyHeight] = useState(0);
   const collapseTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const screen = stack[stack.length - 1];
@@ -808,6 +840,7 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
   const ctx: Ctx = {
     state: entry.state,
     theme,
+    calm,
     touch: bump,
     set: (patch) => setState(entry.id, patch),
     onAction: (action) => {
@@ -836,8 +869,9 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
     bump();
   }, [entry.alert]);
 
-  // Born from the camera cutout (or a dot), then springs to its real size.
-  const seed = { w: geo.cutout?.width ?? 40, h: geo.cutout?.height ?? geo.height };
+  // Born from the camera hole (or a dot) and shrinks back into it: always a pill, never taller
+  // than wide, whatever shape a device reports.
+  const seed = geo.seed;
   const w = useSharedValue(seed.w);
   const h = useSharedValue(seed.h);
   const radius = useSharedValue(geo.height / 2);
@@ -856,7 +890,9 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
   /** A quick swell when something happens, so the eye catches it. */
   const pop = () => {
     if (reduced) return;
-    kick.value = withSequence(withTiming(1, { duration: 110, easing: Easing.out(Easing.quad) }), withSpring(0, { duration: 600, dampingRatio: 0.45 }));
+    kick.value = calm
+      ? withSequence(withTiming(0.3, { duration: 140, easing: Easing.out(Easing.quad) }), withTiming(0, { duration: 280, easing: Easing.inOut(Easing.quad) }))
+      : withSequence(withTiming(1, { duration: 110, easing: Easing.out(Easing.quad) }), withSpring(0, { duration: 600, dampingRatio: 0.45 }));
   };
   useEffect(() => { if (entry.key) pop(); }, [entry.key]);
 
@@ -896,7 +932,7 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
   const swapStyle = useAnimatedStyle(() => ({ opacity: swap.value, transform: [{ scale: 0.92 + swap.value * 0.08 }] }));
 
   const showBubble = !!bubble && !isOpen && !leaving;
-  useEffect(() => { split.value = reduced ? (showBubble ? 1 : 0) : withSpring(showBubble ? 1 : 0, { duration: 800, dampingRatio: 0.62 }); }, [showBubble]);
+  useEffect(() => { split.value = reduced ? (showBubble ? 1 : 0) : withSpring(showBubble ? 1 : 0, { duration: 800, dampingRatio: calm ? 1 : 0.62 }); }, [showBubble]);
 
   const islandStyle = useAnimatedStyle(() => {
     const pull = Math.max(0, dragY.value);
@@ -929,21 +965,25 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
     return { left: geo.width / 2 + w.value / 2 - bubbleSize * 0.4, height: neck, top: geo.top + (bubbleSize - neck) / 2, opacity: s > 0.02 && neck > 1 ? 1 : 0 };
   });
 
+  // The responder is created once, so it reads the motion style through a ref.
+  const calmRef = useRef(calm);
+  calmRef.current = calm;
+  const settle = () => (calmRef.current ? withSpring(0, { duration: 400, dampingRatio: 1 }) : withSpring(0));
   const pan = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8 || Math.abs(g.dx) > 12,
-    onPanResponderGrant: () => { press.value = withSpring(0); },
+    onPanResponderGrant: () => { press.value = settle(); },
     onPanResponderMove: (_, g) => {
       if (Math.abs(g.dx) > Math.abs(g.dy)) dragX.value = Math.max(-60, Math.min(60, g.dx)) * 0.3;
       else dragY.value = Math.max(-60, Math.min(90, g.dy)) * (g.dy > 0 ? 0.6 : 0.4);
     },
     onPanResponderRelease: (_, g) => {
-      dragX.value = withSpring(0, { duration: 500, dampingRatio: 0.6 });
-      dragY.value = withSpring(0, { duration: 500, dampingRatio: 0.6 });
+      dragX.value = withSpring(0, { duration: 500, dampingRatio: calmRef.current ? 1 : 0.6 });
+      dragY.value = withSpring(0, { duration: 500, dampingRatio: calmRef.current ? 1 : 0.6 });
       gesture.current(g.dx, g.dy);
     },
     onPanResponderTerminate: () => {
-      dragX.value = withSpring(0);
-      dragY.value = withSpring(0);
+      dragX.value = settle();
+      dragY.value = settle();
     },
   }), []);
   // The responder is created once; its decisions read the latest render through this ref.
@@ -965,13 +1005,26 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
     go(false);
   };
 
+  // Around a camera, both sides take the wider side's width so the gap stays centred on the lens,
+  // the way iOS lays out leading and trailing around the sensor.
+  const side = geo.cutout ? Math.max(sides.l, sides.r) : 0;
+  const measureSide = (key: 'l' | 'r') => (e: { nativeEvent: { layout: { width: number } } }) => {
+    const width = Math.ceil(e.nativeEvent.layout.width);
+    setSides((prev) => (prev[key] === width ? prev : { ...prev, [key]: width }));
+  };
   const compactRow = (header: boolean) => (
     <View style={[styles.compactRow, { minHeight: rowHeight }]}>
-      {entry.template.compact.leading ? <Node node={entry.template.compact.leading} ctx={ctx} inRow /> : null}
+      {entry.template.compact.leading ? (
+        <View style={{ minWidth: side, alignItems: 'flex-start' }}>
+          <View onLayout={header ? undefined : measureSide('l')}><Node node={entry.template.compact.leading} ctx={ctx} inRow /></View>
+        </View>
+      ) : null}
       <View style={{ minWidth: geo.gap, flexGrow: 1 }} />
       {entry.template.compact.trailing ? (
         // Expanded keeps only the leading mark as a header: the body restates the value, larger.
-        <Animated.View style={header ? trailingStyle : undefined}><Node node={entry.template.compact.trailing} ctx={ctx} inRow /></Animated.View>
+        <Animated.View style={[{ minWidth: side, alignItems: 'flex-end' }, header ? trailingStyle : undefined]}>
+          <View onLayout={header ? undefined : measureSide('r')}><Node node={entry.template.compact.trailing} ctx={ctx} inRow /></View>
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -981,6 +1034,9 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
 
   return (
     <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999 }]}>
+      {debugCutout && geo.cutout ? (
+        <View pointerEvents="none" style={{ position: 'absolute', zIndex: 10000, left: geo.cutout.x, top: geo.cutout.y, width: geo.cutout.width, height: geo.cutout.height, borderWidth: 1, borderColor: '#FF3B30', borderRadius: geo.cutout.height / 2 }} />
+      ) : null}
       {dim ? (
         <Animated.View pointerEvents={isOpen ? 'auto' : 'none'} style={[StyleSheet.absoluteFill, styles.scrim, scrimStyle]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => go(false)} accessibilityLabel="Collapse the island" />
@@ -1013,7 +1069,7 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim }: { entr
         <Pressable
           onPress={onHeaderPress}
           onPressIn={() => { if (!isOpen) press.value = withSpring(1, { duration: 180, dampingRatio: 1 }); }}
-          onPressOut={() => { press.value = withSpring(0, { duration: 500, dampingRatio: 0.45 }); }}
+          onPressOut={() => { press.value = withSpring(0, { duration: 500, dampingRatio: calm ? 1 : 0.45 }); }}
           onLongPress={() => hasBody && go(true)}
           delayLongPress={280}
           accessibilityRole="button"
@@ -1061,7 +1117,7 @@ export function IslandPreview({ template, state: initial = {}, expanded = false,
   const bodyNode = (name && template.screens?.[name]) || template.expanded;
   const open = expanded && !!bodyNode;
   const row = (
-    <View style={[styles.compactRow, { minHeight: COMPACT_HEIGHT }, open && { paddingHorizontal: OPEN_INSET, marginTop: OPEN_TOP }]}>
+    <View style={[styles.compactRow, { minHeight: ctx.theme.compactHeight }, open && { paddingHorizontal: OPEN_INSET, marginTop: OPEN_TOP }]}>
       {template.compact.leading ? <Node node={template.compact.leading} ctx={ctx} inRow /> : null}
       <View style={{ minWidth: 28, flexGrow: 1 }} />
       {template.compact.trailing && !open ? <Node node={template.compact.trailing} ctx={ctx} inRow /> : null}

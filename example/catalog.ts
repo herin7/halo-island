@@ -8,7 +8,7 @@
  */
 import {
   IslandNode, IslandState, IslandTemplate,
-  arc, bar, bars, button, chips, column, fx, icon, image, line, lottie, pet, ring, row, stack, steps, svg, text, timer, track, when,
+  arc, bar, bars, button, chips, column, fx, icon, image, line, lottie, pet, ring, row, sky, stack, steps, svg, text, timer, track, when,
 } from 'halo-island';
 
 import { brand } from './brands';
@@ -40,6 +40,19 @@ export interface Scenario {
 const GREY = '#98989F';
 const FILL = '#2C2C2E';
 const MIN = 60_000;
+/** IndiGo's blue, lifted for a black island. */
+const SKY = '#6E9BFF';
+/** Rain blue: cool and light, readable on black. */
+const RAIN = '#7CC4FF';
+/** Precipitation for the next hour, 0–1: 12 five-minute points, drawn as 24 finer bars. */
+const hour = (points: number[]) =>
+  Array.from({ length: 24 }, (_, i) => { const t = i / 2, a = points[Math.floor(t)], b = points[Math.min(11, Math.ceil(t))]; return +(a + (b - a) * (t % 1)).toFixed(2); }).join(',');
+const NEXT_HOUR = {
+  rain: hour([0.7, 0.75, 0.8, 0.72, 0.6, 0.42, 0.3, 0.18, 0.1, 0.06, 0.04, 0.02]),
+  storm: hour([0.95, 1, 0.98, 0.9, 0.75, 0.55, 0.4, 0.28, 0.16, 0.1, 0.06, 0.03]),
+  easing: hour([0.4, 0.32, 0.22, 0.14, 0.08, 0.04, 0.02, 0, 0, 0, 0, 0]),
+  dry: hour([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+};
 
 // region Building blocks
 
@@ -72,31 +85,69 @@ export const scenarios: Scenario[] = [
     group: 'Travel',
     title: 'IndiGo',
     about: 'Gate, boarding time, the flight arc',
-    color: '#5E8BFF',
-    glyph: 'airplane-tilt',
+    color: SKY,
+    glyph: 'airliner',
     template: {
       compact: {
-        leading: glyph('airplane-tilt', '#5E8BFF', 18),
-        trailing: row({ gap: 6, align: 'baseline' }, text('{gate}', { size: 15, weight: 'semibold', color: '#5E8BFF' }), timer('{boardAt}', { style: { size: 16, weight: 'semibold' } })),
+        leading: glyph('airliner', SKY, 18),
+        trailing: row({ gap: 6, align: 'baseline' }, text('{gate}', { size: 15, weight: 'semibold', color: SKY }), timer('{boardAt}', { style: { size: 16, weight: 'semibold' } })),
       },
       expanded: column({ gap: 10 },
         row({ justify: 'between', align: 'end' },
           column({ gap: 0 }, text('BLR', { size: 26, weight: 'semibold' }), text('Bengaluru', { size: 12, color: GREY })),
-          column({ gap: 0, align: 'center' }, text('6E 2134', { size: 12, color: GREY }), text('Gate {gate}', { size: 15, weight: 'semibold', color: '#5E8BFF' })),
+          column({ gap: 0, align: 'center' }, text('6E 2134', { size: 12, color: GREY }), text('Gate {gate}', { size: 15, weight: 'semibold', color: SKY })),
           column({ gap: 0, align: 'end' }, text('DEL', { size: 26, weight: 'semibold' }), text('New Delhi', { size: 12, color: GREY }))),
-        arc('{progress}', { height: 36, colors: ['#5E8BFF', '#5E8BFF'], thickness: 3, marker: 'airplane-tilt', markerSize: 18 }),
+        // The route: dotted ahead, a comet tail behind, the plane flying it nose-first.
+        arc('{progress}', { height: 38, colors: [SKY], thickness: 2.5, marker: 'airliner', markerSize: 20 }),
         row({ justify: 'between', align: 'baseline' },
           text('{status}', { size: 14, color: GREY }),
           timer('{boardAt}', { style: { size: 20, weight: 'semibold' } })),
         // The one action that matters at the gate, only once boarding starts.
-        when('boarding', row({ gap: 10 }, wide(button('pass', 'Boarding pass', { color: '#5E8BFF', textColor: '#FFFFFF' })))),
+        when('boarding', row({ gap: 10 }, wide(button('pass', 'Boarding pass', { color: SKY, textColor: '#06122E' })))),
       ),
-      theme: { accent: '#5E8BFF' },
+      theme: { accent: SKY },
     },
     initial: () => ({ gate: 'G24', status: 'Boarding in', boardAt: Date.now() + 38 * MIN, progress: 0.18 }),
     story: [
       [3000, { gate: 'G27', status: 'Gate changed · boarding in' }, true],
       [3500, () => ({ status: 'Boarding now', boardAt: Date.now() + MIN, progress: 0.35, boarding: true }), true],
+    ],
+  },
+  {
+    id: 'weather',
+    group: 'Daily',
+    title: 'Weather',
+    about: 'Rain in the next hour, as it clears',
+    color: RAIN,
+    glyph: 'cloud',
+    template: {
+      compact: {
+        leading: sky('{sky}', { size: 20 }),
+        trailing: text('{temp}°', { size: 16, weight: 'semibold', mono: true }),
+      },
+      expanded: column({ gap: 12 },
+        row({ align: 'center', gap: 8 },
+          column({ gap: 2, grow: true },
+            text('{temp}°', { size: 40, weight: 'medium', mono: true }),
+            text('{condition} · Bengaluru', { size: 15, weight: 'semibold', lines: 1 }),
+            text('H:{hi}°  L:{lo}°', { size: 13, color: GREY, mono: true })),
+          sky('{sky}', { size: 72 })),
+        // Apple-style next-hour chart: what the sky does in the next 60 minutes.
+        column({ gap: 6 },
+          row({ justify: 'between', align: 'baseline' },
+            text('{rainNote}', { size: 14, weight: 'semibold', color: RAIN }),
+            text('{chance}', { size: 13, color: GREY })),
+          bars('{rainNext}', { height: 28, gap: 2.5, color: RAIN, track: FILL }),
+          row({ justify: 'between' }, text('Now', { size: 11, color: GREY }), text('30m', { size: 11, color: GREY }), text('60m', { size: 11, color: GREY }))),
+      ),
+      theme: { accent: RAIN },
+    },
+    initial: () => ({ temp: 21, hi: 27, lo: 19, sky: 'rain', condition: 'Rain', rainNote: 'Rain stops in 25 min', chance: '90%', rainNext: NEXT_HOUR.rain }),
+    story: [
+      [3500, { sky: 'storm', condition: 'Thunderstorm', rainNote: 'Heavy rain for 10 min', chance: '100%', rainNext: NEXT_HOUR.storm }, true],
+      [3500, { sky: 'rain', condition: 'Light rain', rainNote: 'Rain stops in 15 min', chance: '70%', rainNext: NEXT_HOUR.easing }],
+      [3500, { sky: 'partly', condition: 'Clearing', temp: 22, rainNote: 'No rain next hour', chance: '10%', rainNext: NEXT_HOUR.dry }],
+      [3500, { sky: 'clear', condition: 'Sunny', temp: 24, rainNote: 'Clear for the evening', chance: '0%' }, true],
     ],
   },
   // endregion

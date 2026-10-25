@@ -107,8 +107,9 @@ internal class OverlayIsland(private val context: Context) {
       PixelFormat.TRANSLUCENT
     ).apply {
       gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-      // Overlays can't receive touches in the status bar region, so the pill sits just below it.
-      y = statusBarInset + dp(4)
+      // Overlays can't receive touches in the status bar region, so the pill sits just below it,
+      // and below the camera on devices whose notch runs deeper than the status bar.
+      y = max(statusBarInset, cutoutBottom()) + dp(4)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
       }
@@ -139,7 +140,7 @@ internal class OverlayIsland(private val context: Context) {
     compactHost.addView(compactRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
     compactRow.measure(unspecified, unspecified)
-    compactHeight = max(dp(38), compactRow.measuredHeight + dp(10))
+    compactHeight = max(dp(theme.compactHeight.toInt()), compactRow.measuredHeight + dp(6))
     compactWidth = compactRow.measuredWidth.coerceIn(compactMinWidth, expandedWidth)
 
     // Expanded = the compact row as a header, then the body — the same layout iOS uses.
@@ -261,7 +262,8 @@ internal class OverlayIsland(private val context: Context) {
           moved = false
           longPressed = false
           handler.postDelayed(longPress, 420L)
-          container.animate().scaleX(0.97f).scaleY(0.97f).setDuration(90L).start()
+          // A press dip reads as playful; calm (critically damped) motion skips it.
+          if (lively()) container.animate().scaleX(0.97f).scaleY(0.97f).setDuration(90L).start()
         }
         MotionEvent.ACTION_MOVE -> {
           val delta = event.rawY - downY
@@ -372,6 +374,19 @@ internal class OverlayIsland(private val context: Context) {
   }
 
   // endregion
+
+  /** The top cutout's safe inset in px: the line below which nothing touches the camera. */
+  private fun cutoutBottom(): Int {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0
+    return windowManager.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.displayCutout()).top
+  }
+
+  /** Underdamped motion overshoots on purpose; anything near critical damping wants no flourishes. */
+  private fun lively(): Boolean {
+    val motion = entry?.template?.optJSONObject("motion") ?: return entry?.template?.optString("motion") != "none"
+    val stiffness = motion.optDouble("stiffness", 260.0)
+    return motion.optDouble("damping", 32.0) / (2 * sqrt(stiffness)) < 0.95
+  }
 
   /** Same physics as the in-app renderer: JS sends {stiffness, damping} with mass 1. */
   private fun SpringForce.applyMotion() {

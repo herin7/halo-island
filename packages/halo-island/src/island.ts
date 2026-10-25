@@ -27,7 +27,8 @@ interface NativeHaloIsland {
   addListener?(event: 'onAction', listener: (e: { id: string; action: string }) => void): { remove(): void };
 }
 
-export interface Cutout { x: number; y: number; width: number; height: number }
+/** The camera hole in window dp; `safeTop` is the line below which nothing touches it. */
+export interface Cutout { x: number; y: number; width: number; height: number; safeTop?: number }
 
 /** Missing in Expo Go and on web: the in-app island still works, system surfaces no-op. */
 export const native = requireOptionalNativeModule<NativeHaloIsland>('HaloIsland');
@@ -155,6 +156,8 @@ if (Platform.OS === 'android') {
 const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secondary', 'accent', 'border', 'textColor', 'glow', 'ink']);
 
 export const MOTION = {
+  /** Critically damped: glides to size with no overshoot and nothing extra. Calm, product-grade. */
+  minimal: { stiffness: 300, damping: 35 },
   /** The default: a touch of overshoot, like the system island. */
   island: { stiffness: 340, damping: 30 },
   bouncy: { stiffness: 380, damping: 28 },
@@ -270,6 +273,9 @@ export function endAll() {
   native?.endAll();
   changed();
 }
+
+/** The camera hole at the top of the app window (dp), as this device reports it. Handy in bug reports. */
+export const getCutout = (): Cutout | null => native?.getCutout() ?? null;
 
 export const capabilities = (): Capabilities =>
   native?.capabilities() ?? { liveActivities: false, liveUpdates: false, notifications: false, overlay: false };

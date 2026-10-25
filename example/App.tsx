@@ -24,7 +24,7 @@ import { C, F, ISLAND_FONTS, R } from './theme';
 import { Fade, Kicker, Lazy, Press, Segmented, Switch, onScrollY, setHaptics } from './ui';
 import { openOS, osId, poke, setPetMood, useIslandOS } from './useIslandOS';
 
-const MOTIONS = ['island', 'bouncy', 'snappy', 'smooth'] as const satisfies readonly MotionPreset[];
+const MOTIONS = ['minimal', 'island', 'bouncy', 'snappy', 'smooth'] as const satisfies readonly MotionPreset[];
 const MOODS = ['idle', 'happy', 'love', 'sleepy', 'surprised', 'wink', 'thinking', 'focused'];
 const MOOD_EMOJI: Record<string, string> = { idle: '•‿•', happy: '^‿^', love: '♥‿♥', sleepy: '–‿–', surprised: 'O_O', wink: '^‿•', thinking: '•_•?', focused: '>_<' };
 const OS_SCREENS = [{ id: '', label: 'Launcher', color: C.violet }, ...APPS];
@@ -44,7 +44,7 @@ export default function App() {
   const screen = useWindowDimensions();
   const [material, setMaterial] = useState<Look['material']>('solid');
   const [aura, setAura] = useState(false);
-  const [motion, setMotion] = useState<MotionPreset>('island');
+  const [motion, setMotion] = useState<MotionPreset>('minimal');
   const [haptics, setHapticsOn] = useState(true);
   const [dim, setDim] = useState(true);
   const [overlay, setOverlay] = useState(false);
@@ -194,8 +194,8 @@ export default function App() {
           </Press>
 
           {/* Live Activities */}
-          <Section kicker="Live Activities" color={C.amber} title="Sixteen islands." serif="All alive.">
-            A flight to boarding, classes, Claude Code limits, a health buddy, a clan raid. Tap one to play its story on the island; start two and the older one becomes a bubble.
+          <Section kicker="Live Activities" color={C.amber} title="Seventeen islands." serif="All alive.">
+            A flight to boarding, rain clearing, classes, Claude Code limits, a health buddy, a clan raid. Tap one to play its story on the island; start two and the older one becomes a bubble.
           </Section>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabs}>
             {(['All', ...groups] as const).map((g) => (
@@ -247,7 +247,7 @@ export default function App() {
               <Segmented options={['solid', 'glass'] as const} value={material} onChange={setMaterial} labels={{ solid: 'Solid', glass: 'Glass' }} />
             </Setting>
             <Setting title="Motion">
-              <Segmented options={MOTIONS} value={motion as (typeof MOTIONS)[number]} onChange={setMotion} labels={{ island: 'Island', bouncy: 'Bouncy', snappy: 'Snappy', smooth: 'Smooth' }} />
+              <Segmented options={MOTIONS} value={motion as (typeof MOTIONS)[number]} onChange={setMotion} labels={{ minimal: 'Minimal', island: 'Island', bouncy: 'Bouncy', snappy: 'Snappy', smooth: 'Smooth' }} />
             </Setting>
             <Setting title="Pet mood" hint="It also has opinions of its own: leave it alone and it dozes off.">
               <View style={s.moods}>

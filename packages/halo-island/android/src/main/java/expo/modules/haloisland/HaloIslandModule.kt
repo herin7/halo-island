@@ -121,22 +121,36 @@ class HaloIslandModule : Module() {
       }
     }
 
-    /** Top display cutout in dp, so the in-app island can grow out of the real camera hole. */
+    /**
+     * The camera hole at the top of the app's window, in dp, so the in-app island can grow out of
+     * it. Null when there is none at the top (no cutout, landscape, a window that starts below it).
+     */
     Function("getCutout") {
       val activity = appContext.currentActivity ?: return@Function null
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return@Function null
-      val cutout = activity.window.decorView.rootWindowInsets?.displayCutout ?: return@Function null
-      val band = cutout.boundingRects.firstOrNull { it.top == 0 } ?: return@Function null
-      // The bounding rect spans the whole inset band; the cutout path is the actual hole (API 31+).
+      val decor = activity.window.decorView
+      val cutout = decor.rootWindowInsets?.displayCutout ?: return@Function null
+      val band = cutout.boundingRects.firstOrNull { it.top == 0 && !it.isEmpty } ?: return@Function null
+      // The bounding rect is often padded or runs from the top edge (Samsung). The cutout path is
+      // the real lens (API 31+); a Region of it counts only filled pixels, so a stray moveTo in an
+      // OEM's path spec can't stretch the bounds back to y=0.
       val hole = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         cutout.cutoutPath?.let { path ->
-          android.graphics.RectF().also { path.computeBounds(it, true) }
-            .takeIf { !it.isEmpty && it.top < band.bottom && it.height() <= band.height() }
+          android.graphics.Region().apply { setPath(path, android.graphics.Region(band)) }.bounds
+            .takeIf { !it.isEmpty && band.contains(it) }
         }
       } else null
-      val rect = hole ?: android.graphics.RectF(band)
+      val rect = hole ?: band
+      // Insets are in display space; the island is laid out in the window, which can start lower.
+      val origin = IntArray(2).also(decor::getLocationOnScreen)
       val d = context.resources.displayMetrics.density
-      mapOf("x" to rect.left / d, "y" to rect.top / d, "width" to rect.width() / d, "height" to rect.height() / d)
+      mapOf(
+        "x" to (rect.left - origin[0]) / d,
+        "y" to (rect.top - origin[1]) / d,
+        "width" to rect.width() / d,
+        "height" to rect.height() / d,
+        "safeTop" to cutout.safeInsetTop / d,
+      )
     }
 
     View(HaloIconView::class) {

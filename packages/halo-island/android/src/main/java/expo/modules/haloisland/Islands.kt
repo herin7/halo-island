@@ -110,6 +110,8 @@ internal object Notifications {
         }
         "timer" -> if (timerTo == null) { timerTo = num(n.opt("to"), state).toLong(); timerUp = n.optBoolean("countUp") }
         "icon" -> if (iconName == null) iconName = n.optString("name")
+        // Weather art stands in as a cloud (or sun) in the status bar chip.
+        "sky" -> if (iconName == null) iconName = if (fill(n.optString("condition"), state) == "clear") "sun" else "cloud"
         // A notification action fires on one tap, so confirm buttons and in-island navigation stay in-app.
         "button" -> if (!n.has("confirm") && n.optString("action").let { !it.startsWith("go:") && it != "back" && it != "close" }) buttons += n
       }

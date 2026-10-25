@@ -242,7 +242,7 @@ Every `start()` is its own island. The newest one owns the island, and the one b
 | `steps` | `steps(value, count, opts?)` | `count` segments, `value` done (fractions fill part of one) |
 | `bars` | `bars(values, opts?)` | values 0–1 as an array or `'{list}'`, `active`, `gap`, `animate` (live waveform) |
 | `line` | `line(values, opts?)` | sparkline, values 0–1, `height`, `color`, `fill`, `thickness` |
-| `arc` | `arc(value, opts?)` | shallow arc, `colors`, `thickness`, `glow`; `marker` rides the curve and turns with it |
+| `arc` | `arc(value, opts?)` | shallow arc, `colors`, `thickness`, `glow`; with a `marker` (try `'airliner'`) the route ahead is dotted, a comet tail trails behind and the marker flies nose-first in a halo with speed streaks |
 | `timeline` | `timeline(value, icons, opts?)` | stages as icons on a line, `value` counts reached stages |
 | `timer` | `timer(to, opts?)` | counts down to (or `countUp` from) epoch ms, ticking on its own with no updates |
 | `button` | `button(action, label?, opts?)` | `icon`, `color`, `textColor`, `tint`, `confirm`, `shape: pill\|tile\|circle` |
@@ -250,6 +250,7 @@ Every `start()` is its own island. The newest one owns the island, and the one b
 | `slider` | `slider(bind, opts?)` | drag to set `state[bind]` between 0 and 1, `icon`, `color`, `track`, `height` |
 | `toggle` | `toggle(bind, label, opts?)` | a tile that flips `state[bind]`, `icon`, `color` |
 | `pet` | `pet(mood?, opts?)` | `mood` (or `'{mood}'`), `size`, `color`, `cheeks` |
+| `sky` | `sky(condition, opts?)` | weather drawn from light: `clear`, `partly`, `cloudy`, `rain`, `storm` (or `'{sky}'`), `size`; volumetric clouds, blooming sun, falling rain, storm flashes; changes cross-fade |
 | `lottie` | `lottie(uri, opts?)` | needs `lottie-react-native`, `size`, `width`, `loop`, `speed` |
 | `rive` | `rive(uri, opts?)` | `.riv` file, `artboard`, `stateMachine`, `trigger` (fires when its value changes), `inputs` |
 | `stack` | `stack(style?, ...children)` | layers children: the first sets the size, the rest center on it (a value inside a ring) |
@@ -285,6 +286,7 @@ theme: {
   background: '#000', foreground: '#FFFFFF', secondary: '#98989F', accent: '#5FCB9C',
   border: '',            // empty: the key line takes the accent
   radius: 40,            // expanded corner radius; compact is always a pill
+  compactHeight: 37,     // pill height; 24–30 for a slimmer pill (never shorter than its content)
   glow: '#5FCB9C',       // the border breathes in this color
   gradient: ['#1a1a2e', '#16213e'],
   material: 'solid',     // or 'glass'
@@ -299,7 +301,7 @@ Missing font weights fall back to the nearest one that's set. To set base defaul
 
 ## Motion
 
-`motion: 'island' | 'bouncy' | 'snappy' | 'smooth' | 'none' | { stiffness, damping }`. The default is `island`, a touch of overshoot like the system island. Reduced-motion settings are respected everywhere. `<HaloIslandHost motion={…} />` overrides it for every island.
+`motion: 'minimal' | 'island' | 'bouncy' | 'snappy' | 'smooth' | 'none' | { stiffness, damping }`. The default is `island`, a touch of overshoot like the system island. `minimal` is critically damped: the island glides to size with no overshoot, and the small flourishes (the swell on update, the press dip, drag rebound) settle instead of bouncing. Reduced-motion settings are respected everywhere. `<HaloIslandHost motion={…} />` overrides it for every island.
 
 ## HaloIslandHost
 
@@ -311,6 +313,7 @@ Missing font weights fall back to the nearest one that's set. To set base defaul
 | `haptics` | `true` | Uses `expo-haptics` when installed |
 | `dim` | `true` | Dims the app behind the expanded island. Tapping outside collapses it |
 | `blurTarget` | | Android glass: a ref to the `BlurTargetView` (expo-blur) wrapping your screen, so the island blurs what's under it |
+| `debugCutout` | `false` | Outlines the camera hole the island detected. For checking a new device; `getCutout()` returns the same numbers for a bug report |
 
 `<IslandPreview>` renders a template statically, for galleries and design tools.
 
@@ -336,6 +339,8 @@ Being clear about limits is part of the design. Every surface renders the same t
 | Layout, text, icons, images | ✅ | ✅ | Title, text and icon taken from the tree | 🚧 in progress |
 | ring, bar, steps, track | ✅ animated | ✅ animated | First one becomes the progress bar (segments on Android 16) | 🚧 |
 | bars, arc, timeline, line | ✅ | ✅ | ✗ | 🚧 |
+| sky | ✅ animated | ✅ animated | ✗ | 🚧 |
+| camera cutout | wraps a centred punch-hole or Dynamic Island; corner holes, wide notches, landscape and split screen sit below the status bar | always below the status bar and notch (Android delivers no touches there) | — | — |
 | timer | ✅ | ✅ | ✅ chronometer | 🚧 |
 | pet | ✅ blinks, follows `lookAt`, morphs moods | ✅ blinks and morphs, no finger tracking | ✗ | 🚧 |
 | chips, slider, toggle | ✅ | ✗ not rendered | ✗ | 🚧 |
@@ -351,7 +356,7 @@ Being clear about limits is part of the design. Every surface renders the same t
 
 Other limits:
 
-- **iOS Live Activities are not in 0.2.0.** On iOS, `start()` shows the in-app island only.
+- **iOS Live Activities are not in 0.3.0.** On iOS, `start()` shows the in-app island only.
 - The Android island needs `SYSTEM_ALERT_WINDOW` and a `specialUse` foreground service. Google Play asks you to justify both. It sits just below the status bar, because overlays can't take touches there.
 - Live Updates need Android 16+, and users can turn promotion off. `openLiveUpdateSettings()` links straight to that setting.
 - Templates plus state should stay under 4KB, which is the ActivityKit cap. The library warns in dev builds.
