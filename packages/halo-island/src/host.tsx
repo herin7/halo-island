@@ -877,6 +877,8 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
   const radius = useSharedValue(geo.height / 2);
   const opacity = useSharedValue(0);
   const open = useSharedValue(0);
+  /** Header layout: follows the shape on the UI thread, so the header never jumps ahead of it. */
+  const morph = useSharedValue(0);
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
   const press = useSharedValue(0);
@@ -907,6 +909,7 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
       radius.value = to(seed.h / 2);
       opacity.value = fade(0, 120, 220);
       open.value = fade(0, 0, 120);
+      morph.value = to(0, { dampingRatio: 1 });
       return;
     }
     const targetW = isOpen ? geo.expandedWidth : Math.min(geo.expandedWidth, Math.max(compact.width, geo.gap + 2 * rowHeight));
@@ -917,7 +920,8 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
     radius.value = to(isOpen ? theme.radius : rowHeight / 2);
     opacity.value = fade(1);
     // Content follows the shape: it arrives as the island finishes growing and leaves before it shrinks.
-    open.value = isOpen ? fade(1, 90, 260) : fade(0, 0, 130);
+    open.value = isOpen ? fade(1, 60, 280) : fade(0, 0, 130);
+    morph.value = to(isOpen ? 1 : 0, { dampingRatio: 1 });
   }, [compact, bodyHeight, isOpen, leaving, geo.expandedWidth, rowHeight]);
 
   // A different activity took the island: its content fades in as the shape morphs to it.
@@ -948,7 +952,12 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
       transform: [{ translateX: dragX.value }, { scale: 1 - press.value * 0.035 }],
     };
   });
-  const bodyStyle = useAnimatedStyle(() => ({ opacity: open.value, transform: [{ translateY: (1 - open.value) * -10 }, { scale: 0.94 + open.value * 0.06 }] }));
+  // Content grows out of the header, anchored at the top, as the shape opens.
+  const bodyStyle = useAnimatedStyle(() => ({ opacity: open.value, transform: [{ translateY: (1 - open.value) * -6 }, { scale: 0.96 + open.value * 0.04 }] }));
+  const headerStyle = useAnimatedStyle(() => {
+    const m = Math.min(1, Math.max(0, morph.value));
+    return { paddingHorizontal: m * (OPEN_INSET - ROW_PAD), paddingTop: m * OPEN_TOP };
+  });
   const trailingStyle = useAnimatedStyle(() => ({ opacity: 1 - open.value, transform: [{ scale: 1 - open.value * 0.3 }] }));
   const scrimStyle = useAnimatedStyle(() => ({ opacity: open.value }));
 
@@ -1074,13 +1083,14 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
           delayLongPress={280}
           accessibilityRole="button"
           accessibilityHint={hasBody ? (isOpen ? 'Collapses the island' : 'Expands the island') : undefined}
-          style={{ width: '100%', paddingHorizontal: isOpen ? OPEN_INSET - ROW_PAD : 0, paddingTop: isOpen ? OPEN_TOP : 0 }}
+          style={{ width: '100%' }}
         >
-          <Animated.View style={swapStyle}>{compactRow(true)}</Animated.View>
+          <Animated.View style={[headerStyle, swapStyle]}>{compactRow(true)}</Animated.View>
         </Pressable>
         {isOpen || bodyHeight ? (
-          <Animated.View pointerEvents={isOpen ? 'box-none' : 'none'} style={[{ width: geo.expandedWidth - OPEN_INSET * 2, alignSelf: 'center', marginTop: OPEN_TOP }, bodyStyle]}>
-            <Animated.View key={`${entry.id}:${screen ?? ''}`} entering={reduced ? undefined : screenIn(dir)} exiting={reduced ? undefined : screenOut(dir)}>
+          <Animated.View pointerEvents={isOpen ? 'box-none' : 'none'} style={[{ width: geo.expandedWidth - OPEN_INSET * 2, alignSelf: 'center', marginTop: OPEN_TOP, transformOrigin: 'top' }, bodyStyle]}>
+            {/* Screens slide only while open: the reset to the main screen after closing stays still. */}
+            <Animated.View key={`${entry.id}:${screen ?? ''}`} entering={reduced || !isOpen ? undefined : screenIn(dir)} exiting={reduced || !isOpen ? undefined : screenOut(dir)}>
               {body}
             </Animated.View>
           </Animated.View>

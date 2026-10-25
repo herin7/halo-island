@@ -53,7 +53,7 @@ focus.start({ left: '18:42', p: 0.62 })`;
 }
 
 export function Playground() {
-  const [o, setO] = useState<Opts>({ accent: '#8B7CFF', material: 'glass', aura: true, glow: false, motion: 'bouncy', mood: 'happy' });
+  const [o, setO] = useState<Opts>({ accent: '#8B7CFF', material: 'glass', aura: true, glow: false, motion: 'minimal', mood: 'happy' });
   const [open, setOpen] = useState(true);
   const [left, setLeft] = useState(18 * 60 + 42);
   const [stageRef, stageW] = useWidth<HTMLDivElement>();

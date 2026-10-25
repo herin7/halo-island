@@ -157,20 +157,29 @@ function Stage({ template, ctx, open, body, bodyKey, dir, gap, width, theme, spr
           {template.compact.trailing ? <Node node={template.compact.trailing} ctx={ctx} inRow /> : null}
         </motion.div>
       </motion.div>
-      <AnimatePresence initial={false} custom={dir} mode="popLayout">
-        {open && body ? (
-          <motion.div key={bodyKey} ref={attachBody} className="hi-body" custom={dir} variants={screenVariants} initial="enter" animate="center" exit="exit"
-            transition={{ type: 'spring', stiffness: 420, damping: 38, opacity: { duration: 0.2 } }}
-            style={{ width: width - INSET * 2, paddingBottom: BOTTOM, '--hi-fg': theme.foreground } as CSSProperties}>
-            <Node node={body} ctx={ctx} />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {/* The body stays mounted and measured, so the shape knows its height before it opens and grows
+          in one motion. Content arrives as the shape grows and leaves before it shrinks, like iOS. */}
+      <motion.div aria-hidden={!open} inert={!open} initial={false} animate={open ? 'shown' : 'hidden'} variants={reveal} style={{ transformOrigin: '50% 0%', pointerEvents: open ? 'auto' : 'none' }}>
+        <AnimatePresence initial={false} custom={dir} mode="popLayout">
+          {body ? (
+            <motion.div key={bodyKey} ref={attachBody} className="hi-body" custom={dir} variants={screenVariants} initial="enter" animate="center" exit="exit"
+              transition={{ type: 'spring', stiffness: 420, damping: 38, opacity: { duration: 0.2 } }}
+              style={{ width: width - INSET * 2, paddingBottom: BOTTOM, '--hi-fg': theme.foreground } as CSSProperties}>
+              <Node node={body} ctx={ctx} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </motion.div>
     </motion.div>
   );
 }
 
-/** Shared-axis: forward slides in from the right, back from the left. Opening fades up from the header. */
+const reveal = {
+  shown: { opacity: 1, scale: 1, y: 0, filter: 'blur(0px)', transition: { delay: 0.06, duration: 0.32, ease: [0.22, 1, 0.36, 1] as const } },
+  hidden: { opacity: 0, scale: 0.96, y: -6, filter: 'blur(4px)', transition: { duration: 0.14, ease: [0.4, 0, 1, 1] as const } },
+};
+
+/** Shared-axis between screens: forward slides in from the right, back from the left. */
 const screenVariants = {
   enter: (d: number) => ({ opacity: 0, x: 36 * d, filter: 'blur(6px)' }),
   center: { opacity: 1, x: 0, filter: 'blur(0px)' },

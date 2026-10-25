@@ -22,7 +22,7 @@ const MOTION = {
 
 export function springOf(motion: Motion | undefined, reduced = false) {
   if (reduced || motion === 'none') return { duration: 0 };
-  const s = typeof motion === 'object' ? motion : MOTION[motion ?? 'island'];
+  const s = typeof motion === 'object' ? motion : MOTION[motion ?? 'minimal'];
   return { type: 'spring' as const, stiffness: s.stiffness, damping: s.damping, mass: 1 };
 }
 
