@@ -69,7 +69,7 @@ internal class OverlayIsland(private val context: Context) {
     val container = root ?: return
     setExpanded(true)
     scheduleAutoCollapse()
-    container.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+    container.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
   }
 
   fun remove() {
@@ -278,7 +278,7 @@ internal class OverlayIsland(private val context: Context) {
           when {
             longPressed -> Unit
             delta > dp(24) -> setExpanded(true)
-            delta < -dp(24) -> setExpanded(false)
+            delta < -dp(24) -> if (isExpanded) setExpanded(false) else dismiss(container)
             !moved -> onTap()
           }
         }
@@ -286,6 +286,22 @@ internal class OverlayIsland(private val context: Context) {
       }
       true
     }
+  }
+
+  /**
+   * Swipe up on the compact pill: it flies away and the app gets a `dismiss` action to decide what
+   * that means (usually end or quiet the island). An app that ignores it sees the pill spring back.
+   */
+  private fun dismiss(container: View) {
+    val current = entry ?: return
+    container.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+    container.animate().cancel()
+    container.animate().translationY(-dp(48).toFloat()).alpha(0f).scaleX(0.85f).scaleY(0.85f).setDuration(220L).withEndAction {
+      HaloIslandModule.dispatch(context, current.id, "dismiss")
+      handler.postDelayed({
+        if (entry === current && root === container) container.animate().translationY(0f).alpha(1f).scaleX(1f).scaleY(1f).setDuration(260L).start()
+      }, 900L)
+    }.start()
   }
 
   private fun onTap() {

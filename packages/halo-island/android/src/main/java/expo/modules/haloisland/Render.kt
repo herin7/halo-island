@@ -176,7 +176,11 @@ internal class Renderer(
     val children = node.optJSONArray("children") ?: return frame
     for (i in 0 until children.length()) {
       build(children.optJSONObject(i), "$path.$i")?.let {
-        frame.addView(it, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        // Keep a fixed size a child already set (a ring's `size`); wrapping it would stretch it to the frame.
+        val own = it.layoutParams
+        val w = own?.width?.takeIf { v -> v > 0 } ?: FrameLayout.LayoutParams.WRAP_CONTENT
+        val h = own?.height?.takeIf { v -> v > 0 } ?: FrameLayout.LayoutParams.WRAP_CONTENT
+        frame.addView(it, FrameLayout.LayoutParams(w, h, Gravity.CENTER))
       }
     }
     return frame
@@ -226,8 +230,9 @@ internal class Renderer(
       val stretch = !isRow && align == "stretch" && type !in FIXED_SIZE && child.optString("shape") != "circle"
       val explicit = view.layoutParams
       val params = when {
-        grows && isRow -> LinearLayout.LayoutParams(0, explicit?.height ?: wrap, 1f)
-        grows -> LinearLayout.LayoutParams(explicit?.width ?: match, 0, 1f)
+        // A flexible spacer has no content: wrapping it would let a bare View claim the whole cross axis.
+        grows && isRow -> LinearLayout.LayoutParams(0, if (type == "spacer") 0 else explicit?.height ?: wrap, 1f)
+        grows -> LinearLayout.LayoutParams(if (type == "spacer") 0 else explicit?.width ?: match, 0, 1f)
         type == "spacer" -> child.optInt("size").let { s -> if (isRow) LinearLayout.LayoutParams(px(s), 1) else LinearLayout.LayoutParams(1, px(s)) }
         type in BARS -> LinearLayout.LayoutParams(match, barHeight(child))
         stretch -> LinearLayout.LayoutParams(match, explicit?.height ?: wrap)
