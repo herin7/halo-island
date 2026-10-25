@@ -32,6 +32,16 @@ npx expo install halo-island react-native-reanimated react-native-worklets react
 npx expo install expo-haptics expo-blur expo-glass-effect lottie-react-native
 ```
 
+Reanimated is required, but npm won't install it for you: each Reanimated release supports only a few React Native versions, so `npx expo install` picks the one that matches your SDK. Installing with plain npm? Add the versions from the table.
+
+| Expo SDK | React Native | react-native-reanimated | react-native-worklets | react-native-svg |
+|---|---|---|---|---|
+| 54 | 0.81 | ~4.1.1 | 0.5.1 | 15.12.1 |
+| 55 | 0.83 | 4.2.1 | 0.7.4 | 15.15.3 |
+| 56 | 0.85 | 4.3.1 | 0.8.3 | 15.15.4 |
+| 57 | 0.86 | 4.5.1 | 0.10.1 | 15.15.4 |
+| 58 | 0.88 | 4.7.1 | 0.13.0 | 15.16.0 |
+
 | Optional package | What it adds |
 |---|---|
 | `expo-haptics` | Haptic ticks on expand, button taps and confirmations |

@@ -1,7 +1,7 @@
 // HOST v2 READY — in-app renderer: JS-drawn graphics, screens, inputs, pet, glass, bubble.
 import { requireNativeView } from 'expo';
 import { ComponentRef, ComponentType, ReactNode, RefObject, createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Dimensions, Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useColorScheme, useWindowDimensions } from 'react-native';
+import { Dimensions, Image, Linking, PanResponder, Platform, Pressable, StatusBar, StyleProp, StyleSheet, Text, TextStyle as RNTextStyle, View, ViewStyle, useColorScheme, useWindowDimensions } from 'react-native';
 import Animated, { Easing, FadeIn, FadeInDown, FadeOut, FadeOutUp, LinearTransition, cancelAnimation, interpolate, interpolateColor, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { Arc, Bars, Icon, Pet, Quiet, Ring, Sky, Sparkline, Timeline, alpha, clamp, useQuiet } from './graphics';
@@ -17,17 +17,32 @@ function optional<T>(load: () => T): T | null {
 
 /** Rive needs the native module (Android). Everything else here is drawn in JS. */
 const NativeGraphic = native ? optional(() => requireNativeView<{ spec: string; style?: ViewStyle }>('HaloGraphic')) : null;
-const LottieView = optional(() => require('lottie-react-native').default as ComponentType<{ source: object | number; autoPlay?: boolean; loop?: boolean; speed?: number; resizeMode?: string; style?: ViewStyle }>);
+
+// Metro skips a missing package only when its `require` sits directly inside a `try` block, and
+// these packages may not be installed, so their types are declared here instead of imported.
 type RiveHandle = { fireState(stateMachine: string, input: string): void; setInputState(stateMachine: string, input: string, value: number | boolean): void };
-const RiveView = optional(() => require('rive-react-native').default as ComponentType<{ ref?: React.Ref<RiveHandle>; source?: number | { uri: string }; url?: string; artboardName?: string; stateMachineName?: string; autoplay?: boolean; fit?: string; style?: ViewStyle }>);
-const Haptics = optional(() => require('expo-haptics') as typeof import('expo-haptics'));
-const Blur = optional(() => require('expo-blur').BlurView as ComponentType<{ intensity?: number; tint?: string; blurTarget?: RefObject<ComponentRef<typeof View> | null>; blurMethod?: string; style?: ViewStyle }>);
+type HapticsModule = {
+  ImpactFeedbackStyle: { Light: string; Medium: string };
+  NotificationFeedbackType: { Success: string };
+  impactAsync(style: string): Promise<void>;
+  selectionAsync(): Promise<void>;
+  notificationAsync(type: string): Promise<void>;
+};
+let LottieView: ComponentType<{ source: object | number; autoPlay?: boolean; loop?: boolean; speed?: number; resizeMode?: string; style?: ViewStyle }> | null = null;
+let RiveView: ComponentType<{ ref?: React.Ref<RiveHandle>; source?: number | { uri: string }; url?: string; artboardName?: string; stateMachineName?: string; autoplay?: boolean; fit?: string; style?: ViewStyle }> | null = null;
+let Haptics: HapticsModule | null = null;
+let Blur: ComponentType<{ intensity?: number; tint?: string; blurTarget?: RefObject<ComponentRef<typeof View> | null>; blurMethod?: string; style?: StyleProp<ViewStyle> }> | null = null;
+let Glass: ComponentType<{ glassEffectStyle?: string; tintColor?: string; style?: StyleProp<ViewStyle> }> | null = null;
+try { LottieView = require('lottie-react-native').default; } catch {}
+try { RiveView = require('rive-react-native').default; } catch {}
+try { Haptics = require('expo-haptics'); } catch {}
+try { Blur = require('expo-blur').BlurView; } catch {}
+try {
+  const g = require('expo-glass-effect');
+  if (g.isLiquidGlassAvailable?.()) Glass = g.GlassView;
+} catch {}
 /** Android blurs only what's inside a BlurTargetView; the host gets that view's ref. */
 let blurTarget: RefObject<ComponentRef<typeof View> | null> | undefined;
-const Glass = optional(() => {
-  const g = require('expo-glass-effect');
-  return g.isLiquidGlassAvailable?.() ? (g.GlassView as ComponentType<{ glassEffectStyle?: string; tintColor?: string; style?: ViewStyle }>) : null;
-});
 
 // endregion
 
@@ -48,7 +63,7 @@ const SNAP = { duration: 420, dampingRatio: 0.82 };
 
 type Theme = typeof DEFAULT_THEME;
 
-function themeOf(template: IslandTheme | undefined, base: IslandTheme | undefined, scheme: 'light' | 'dark' | null | undefined): Theme {
+function themeOf(template: IslandTheme | undefined, base: IslandTheme | undefined, scheme: string | null | undefined): Theme {
   // Keys set to undefined (`{ aura: on ? c : undefined }`) mean "not set", not "erase the default".
   const defined = (t?: IslandTheme) => Object.fromEntries(Object.entries(t ?? {}).filter(([, v]) => v != null));
   const merged = { ...DEFAULT_THEME, ...defined(resolveTheme(base, scheme)), ...defined(resolveTheme(template, scheme)) } as Theme;

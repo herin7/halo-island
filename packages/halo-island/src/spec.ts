@@ -159,8 +159,8 @@ export interface IslandTheme {
   dark?: Omit<IslandTheme, 'light' | 'dark'>;
 }
 
-/** Picks the light/dark overrides for the current appearance. */
-export function resolveTheme(theme: IslandTheme | undefined, scheme: 'light' | 'dark' | null | undefined): IslandTheme | undefined {
+/** Picks the light/dark overrides for the current appearance; any other scheme (e.g. `'unspecified'`) keeps the base. */
+export function resolveTheme(theme: IslandTheme | undefined, scheme: string | null | undefined): IslandTheme | undefined {
   if (!theme) return theme;
   const { light, dark, ...base } = theme;
   return { ...base, ...(scheme === 'dark' ? dark : scheme === 'light' ? light : undefined) };

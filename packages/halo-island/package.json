@@ -25,6 +25,7 @@
     "rive-react-native": "*"
   },
   "peerDependenciesMeta": {
+    "react-native-reanimated": { "optional": true },
     "expo-haptics": { "optional": true },
     "expo-blur": { "optional": true },
     "expo-glass-effect": { "optional": true },

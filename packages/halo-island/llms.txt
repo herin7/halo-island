@@ -3,7 +3,7 @@
 > Dynamic Island for React Native. One JSON template renders the in-app island (iOS, Android, web; pure JS via react-native-svg + Reanimated), the Android island over other apps, and the Android notification / Live Update. iOS Live Activities: not yet. Contract: src/spec.ts.
 
 ## Setup
-- npx expo install halo-island react-native-reanimated react-native-worklets react-native-svg
+- npx expo install halo-island react-native-reanimated react-native-worklets react-native-svg (Expo SDK 54-58; Reanimated is required but not auto-installed, so its version must match the app's React Native)
 - Optional: expo-haptics, expo-blur, expo-glass-effect, lottie-react-native
 - Mount once at the root: <HaloIslandHost placement="auto|cutout|below" theme={} motion={} haptics dim />
 - Android over-other-apps island: app.json plugins ["halo-island", { "overlay": true, "overlayReason": "...", "rive": false }] + requestPermissions({ overlay: true })
