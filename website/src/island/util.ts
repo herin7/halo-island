@@ -26,6 +26,11 @@ export function springOf(motion: Motion | undefined, reduced = false) {
   return { type: 'spring' as const, stiffness: s.stiffness, damping: s.damping, mass: 1 };
 }
 
+/** The same spring, 1.4x stiffer at the same damping ratio: it leads without changing character. */
+export function quicker<T extends { stiffness?: number; damping?: number }>(s: T): T {
+  return s.stiffness && s.damping ? { ...s, stiffness: s.stiffness * 1.4, damping: s.damping * Math.sqrt(1.4) } : s;
+}
+
 export function themeOf(template: IslandTemplate): Theme {
   const { light: _l, dark, ...base } = (template.theme ?? {}) as IslandTheme;
   // The site is dark, so the dark overrides apply.
