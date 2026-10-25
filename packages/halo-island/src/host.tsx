@@ -879,6 +879,8 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
   const open = useSharedValue(0);
   /** Header layout: follows the shape on the UI thread, so the header never jumps ahead of it. */
   const morph = useSharedValue(0);
+  /** Compact trailing: leaves fast on open, returns only as the shape lands on close. */
+  const hide = useSharedValue(0);
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
   const press = useSharedValue(0);
@@ -920,7 +922,9 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
     radius.value = to(isOpen ? theme.radius : rowHeight / 2);
     opacity.value = fade(1);
     // Content follows the shape: it arrives as the island finishes growing and leaves before it shrinks.
-    open.value = isOpen ? fade(1, 60, 280) : fade(0, 0, 130);
+    // Timed to the shape (about 0.45s, like iOS): the body arrives once it has room and leaves before it shrinks.
+    open.value = isOpen ? fade(1, 110, 300) : fade(0, 0, 140);
+    hide.value = isOpen ? fade(1, 0, 120) : fade(0, 200, 220);
     morph.value = to(isOpen ? 1 : 0, { dampingRatio: 1 });
   }, [compact, bodyHeight, isOpen, leaving, geo.expandedWidth, rowHeight]);
 
@@ -958,7 +962,7 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
     const m = Math.min(1, Math.max(0, morph.value));
     return { paddingHorizontal: m * (OPEN_INSET - ROW_PAD), paddingTop: m * OPEN_TOP };
   });
-  const trailingStyle = useAnimatedStyle(() => ({ opacity: 1 - open.value, transform: [{ scale: 1 - open.value * 0.3 }] }));
+  const trailingStyle = useAnimatedStyle(() => ({ opacity: 1 - hide.value, transform: [{ scale: 1 - hide.value * 0.3 }] }));
   const scrimStyle = useAnimatedStyle(() => ({ opacity: open.value }));
 
   // The second activity splits off as a round bubble, pinching a liquid neck as it goes.

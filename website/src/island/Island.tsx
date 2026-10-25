@@ -153,7 +153,7 @@ function Stage({ template, ctx, open, body, bodyKey, dir, gap, width, theme, spr
       <motion.div className="hi-row" onClick={onHeader} initial={false} animate={{ paddingTop: open ? TOP : 0, paddingLeft: open ? INSET : ROW_PAD, paddingRight: open ? INSET : ROW_PAD }} transition={spring} style={{ minHeight: ROW, cursor: open ? 'pointer' : undefined }}>
         <div ref={lead} className="hi-slot-lead">{template.compact.leading ? <Node node={template.compact.leading} ctx={ctx} inRow /> : null}</div>
         <span style={{ minWidth: gap, flexGrow: 1 }} />
-        <motion.div ref={trail} className="hi-slot-trail" initial={false} animate={{ opacity: open ? 0 : 1, filter: open ? 'blur(4px)' : 'blur(0px)' }} transition={{ duration: 0.2 }}>
+        <motion.div ref={trail} className="hi-slot-trail" initial={false} animate={{ opacity: open ? 0 : 1, filter: open ? 'blur(4px)' : 'blur(0px)' }} transition={open ? { duration: 0.12 } : { delay: 0.2, duration: 0.22 }}>
           {template.compact.trailing ? <Node node={template.compact.trailing} ctx={ctx} inRow /> : null}
         </motion.div>
       </motion.div>
@@ -175,7 +175,7 @@ function Stage({ template, ctx, open, body, bodyKey, dir, gap, width, theme, spr
 }
 
 const reveal = {
-  shown: { opacity: 1, scale: 1, y: 0, filter: 'blur(0px)', transition: { delay: 0.06, duration: 0.32, ease: [0.22, 1, 0.36, 1] as const } },
+  shown: { opacity: 1, scale: 1, y: 0, filter: 'blur(0px)', transition: { delay: 0.11, duration: 0.3, ease: [0.22, 1, 0.36, 1] as const } },
   hidden: { opacity: 0, scale: 0.96, y: -6, filter: 'blur(4px)', transition: { duration: 0.14, ease: [0.4, 0, 1, 1] as const } },
 };
 

@@ -13,7 +13,7 @@ export function alpha(color: string, a = 0.22) {
 
 /** The library's motion presets (island.ts MOTION), as motion/react springs. */
 const MOTION = {
-  minimal: { stiffness: 300, damping: 35 },
+  minimal: { stiffness: 160, damping: 25 },
   island: { stiffness: 340, damping: 30 },
   bouncy: { stiffness: 380, damping: 28 },
   snappy: { stiffness: 700, damping: 45 },

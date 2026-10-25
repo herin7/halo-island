@@ -157,7 +157,7 @@ const COLOR_KEYS = new Set(['color', 'track', 'background', 'foreground', 'secon
 
 export const MOTION = {
   /** Critically damped: glides to size with no overshoot and nothing extra. Calm, product-grade. */
-  minimal: { stiffness: 300, damping: 35 },
+  minimal: { stiffness: 160, damping: 25 },
   /** The default: a touch of overshoot, like the system island. */
   island: { stiffness: 340, damping: 30 },
   bouncy: { stiffness: 380, damping: 28 },
