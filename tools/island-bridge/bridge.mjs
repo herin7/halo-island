@@ -24,6 +24,7 @@ import { pipeline } from 'node:stream/promises';
 
 import { pushedFrom, startGitHub } from './github.mjs';
 import { accountLimits, scanUsage } from './usage.mjs';
+import { startRelay } from './relay/link.mjs';
 
 const PORT = Number(process.env.HALO_BRIDGE_PORT ?? 7337);
 const LAN = process.argv.includes('--lan');
@@ -43,6 +44,17 @@ function loadToken() {
   return token;
 }
 const TOKEN = loadToken();
+
+/**
+ * Remote access through your AWS relay (relay/deploy.mjs). The secret seals everything end to end;
+ * it is made here, kept here, and reaches the phone only through the pairing QR on this screen.
+ */
+const SETTINGS = (() => {
+  const c = (() => { try { return JSON.parse(readFileSync(CONFIG, 'utf8')); } catch { return {}; } })();
+  if (!c.secret) { c.secret = randomBytes(32).toString('base64url'); c.token ??= TOKEN; writeFileSync(CONFIG, JSON.stringify(c, null, 2)); }
+  return c;
+})();
+let relay = null;
 
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf', zip: 'application/zip', apk: 'application/vnd.android.package-archive', mp4: 'video/mp4', mp3: 'audio/mpeg', txt: 'text/plain', md: 'text/markdown', json: 'application/json', csv: 'text/csv' };
 const mimeOf = (name) => MIME[extname(name).slice(1).toLowerCase()] ?? 'application/octet-stream';
@@ -81,7 +93,7 @@ const state = {
   weekPct: null,
   weekResetsAt: 0,
   contextPct: null,
-  /** The permission request waiting for you, if any: { id, tool }. */
+  /** The permission request waiting for you, if any: { id, tool, questions } (questions: AskUserQuestion only). */
   pending: null,
   lastEventAt: 0,
   /** Today's Claude Code usage from the transcripts (usage.mjs). */
@@ -102,6 +114,7 @@ function changed(patch) {
   Object.assign(state, patch, { version: state.version + 1, lastEventAt: Date.now() });
   for (const fn of listeners) fn();
   listeners.clear();
+  relay?.changed();
 }
 
 /** One line describing a tool call: "Bash: git push", "Edit: src/host.tsx". */
@@ -111,8 +124,20 @@ function describe(tool = 'Tool', input = {}) {
   if (input.file_path) return `${tool}: ${short(String(input.file_path).split(/[\\/]/).slice(-2).join('/'))}`;
   if (input.pattern) return `${tool}: ${short(String(input.pattern))}`;
   if (input.url) return `${tool}: ${short(String(input.url))}`;
+  if (input.questions?.[0]?.question) return `Question: ${short(String(input.questions[0].question))}`;
   return tool;
 }
+
+/** AskUserQuestion's questions, trimmed to what the island shows: up to 4, each with up to 4 option labels. */
+const questionsOf = (input = {}) =>
+  Array.isArray(input.questions)
+    ? input.questions.slice(0, 4).map((q) => ({
+        question: String(q.question ?? ''),
+        header: String(q.header ?? ''),
+        multiSelect: !!q.multiSelect,
+        options: (q.options ?? []).slice(0, 4).map((o) => String(o.label ?? '')),
+      }))
+    : null;
 
 const rescan = () => scanUsage().then((usage) => changed({ usage })).catch(() => {});
 /** Limits straight from your account, so they show up even without the statusline hook. */
@@ -141,18 +166,20 @@ function onHook(event) {
 /** A permission request: show it on the island and wait for a decision (or time out). */
 function ask(event) {
   // Nobody's phone is listening: don't make Claude Code wait for an answer that won't come.
-  if (Date.now() - lastPollAt > PHONE_GONE_MS) return Promise.resolve('ask');
+  if (Date.now() - lastPollAt > PHONE_GONE_MS) return Promise.resolve({ decision: 'ask' });
   // Claude asks one thing at a time; a newer request replaces one still showing.
   for (const settle of waiting.values()) settle('ask');
   const id = randomBytes(6).toString('hex');
-  changed({ connected: true, pending: { id, tool: describe(event.tool_name, event.tool_input), project: state.project } });
+  const questions = event.tool_name === 'AskUserQuestion' ? questionsOf(event.tool_input) : null;
+  changed({ connected: true, pending: { id, tool: describe(event.tool_name, event.tool_input), project: state.project, questions } });
   return new Promise((resolve) => {
     const timer = setTimeout(() => settle('ask'), DECISION_MS);
-    function settle(decision) {
+    function settle(decision, answers) {
       clearTimeout(timer);
       waiting.delete(id);
-      if (state.pending?.id === id) changed({ pending: null, task: decision === 'ask' ? state.task : `${decision === 'allow' ? 'Allowed' : 'Denied'} · ${describe(event.tool_name, event.tool_input)}` });
-      resolve(decision);
+      const done = answers ? 'Answered' : decision === 'allow' ? 'Allowed' : 'Denied';
+      if (state.pending?.id === id) changed({ pending: null, task: decision === 'ask' ? state.task : `${done} · ${describe(event.tool_name, event.tool_input)}` });
+      resolve({ decision, answers });
     }
     waiting.set(id, settle);
   });
@@ -224,13 +251,15 @@ createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/pair' && local(req)) {
     const addr = LAN ? `${lan()}:${PORT}` : `localhost:${PORT}`;
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    return res.end(pairPage(`halodaily://pair?addr=${addr}&token=${TOKEN}`));
+    // With a relay, the pairing link also carries where it is and the end-to-end secret. Shown to this computer only.
+    const remote = SETTINGS.relay?.url ? `&relay=${encodeURIComponent(SETTINGS.relay.url)}&rk=${encodeURIComponent(SETTINGS.relay.key)}&s=${SETTINGS.secret}` : '';
+    return res.end(pairPage(`halodaily://pair?addr=${addr}&token=${TOKEN}${remote}`));
   }
   if (!authorized(req, url)) return json(res, 401, { error: 'bad token' });
   try {
     if (req.method === 'POST' && url.pathname === '/hook') {
       const event = JSON.parse((await body(req)) || '{}');
-      if (url.searchParams.get('ask') === '1') return json(res, 200, { decision: await ask(event) });
+      if (url.searchParams.get('ask') === '1') return json(res, 200, await ask(event));
       onHook(event);
       return json(res, 200, { ok: true });
     }
@@ -251,10 +280,12 @@ createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && url.pathname === '/decide') {
-      const { id, decision } = JSON.parse((await body(req)) || '{}');
+      // `answers` (question text → chosen label) answers an AskUserQuestion; "ask" hands it back to the terminal.
+      const { id, decision, answers } = JSON.parse((await body(req)) || '{}');
       const settle = waiting.get(id);
-      if (!settle || !['allow', 'deny'].includes(decision)) return json(res, 404, { error: 'no such request' });
-      settle(decision);
+      if (!settle || !['allow', 'deny', 'ask'].includes(decision)) return json(res, 404, { error: 'no such request' });
+      const valid = answers && typeof answers === 'object' && Object.values(answers).every((a) => typeof a === 'string');
+      settle(decision, valid ? answers : undefined);
       return json(res, 200, { ok: true });
     }
     // Desk → phone: a file or text from `bridge.mjs send`.
@@ -265,6 +296,8 @@ createServer(async (req, res) => {
       const text = url.searchParams.get('kind') === 'text' ? data.toString('utf8').slice(0, 4000) : '';
       if (!text) {
         drops.set(id, { data, name, mime: mimeOf(name) });
+        // Away from home, the phone fetches it (sealed) from the relay instead.
+        relay?.putFile(id, data);
         for (const old of [...drops.keys()].slice(0, -5)) drops.delete(old);
       }
       changed({ drop: { id, name: text ? 'Text' : name, size: data.length, kind: text ? 'text' : 'file', text, mime: text ? 'text/plain' : mimeOf(name), at: Date.now() } });
@@ -307,6 +340,28 @@ createServer(async (req, res) => {
   }
 }).listen(PORT, LAN ? '0.0.0.0' : '127.0.0.1', () => {
   const github = startGitHub((gh) => changed({ gh }));
+  if (SETTINGS.relay?.url) {
+    relay = startRelay({ ...SETTINGS.relay, secret: SETTINGS.secret }, {
+      state: () => state,
+      log: (m) => console.log(`  ${m}`),
+      // The phone's commands over the relay do what the same requests do over Wi-Fi.
+      onCommand: async (c) => {
+        lastPollAt = Date.now();
+        if (c.type === 'decide') {
+          const settle = waiting.get(c.id);
+          const valid = c.answers && typeof c.answers === 'object' && Object.values(c.answers).every((a) => typeof a === 'string');
+          if (settle && ['allow', 'deny', 'ask'].includes(c.decision)) settle(c.decision, valid ? c.answers : undefined);
+        } else if (c.type === 'clip' && typeof c.text === 'string' && c.text) {
+          setClipboard(c.text);
+          console.log(`  ⇣ clipboard   (relay) ${c.text.length > 50 ? c.text.slice(0, 49) + '…' : c.text}`);
+        } else if (c.type === 'upload' && typeof c.file === 'string') {
+          const path = inbox(String(c.name || 'from-phone'));
+          writeFileSync(path, await relay.getFile(c.file));
+          console.log(`  ⇣ from phone  (relay) ${path}`);
+        }
+      },
+    });
+  }
   rescan();
   limits();
   setInterval(rescan, 60_000);
@@ -316,5 +371,6 @@ createServer(async (req, res) => {
   console.log(`  Token  ${TOKEN}`);
   console.log(`  App    ${LAN ? `${lan()}:${PORT}` : `localhost:${PORT}  (Android: adb reverse tcp:${PORT} tcp:${PORT})`}`);
   console.log(`  GitHub ${github ? 'on (gh auth token)' : 'off: set GITHUB_TOKEN or run gh auth login'}`);
+  console.log(`  Relay  ${relay ? `on (${SETTINGS.relay.region}, end-to-end sealed)` : 'off: node tools/island-bridge/relay/deploy.mjs'}`);
   console.log(`  Send   node tools/island-bridge/bridge.mjs send <file | text>\n`);
 });

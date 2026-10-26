@@ -66,6 +66,33 @@ node tools/island-bridge/bridge.mjs send build/app.apk
 node tools/island-bridge/bridge.mjs send "https://github.com/herin7/halo-island/pull/12"
 ```
 
+## Away from home: three ways to connect
+
+Halo → Settings → Connection picks one. **Auto** tries the direct address first and falls back to the relay.
+
+1. **Local:** same Wi-Fi, `bridge.mjs --lan`.
+2. **Tailscale:** install Tailscale on PC and phone, run `bridge.mjs --lan`, and use the PC's Tailscale address (100.x.y.z:7337). WireGuard-encrypted, nothing exposed to the internet.
+3. **AWS relay:** works from anywhere, no VPN on the phone.
+
+```sh
+aws login                                   # once
+node tools/island-bridge/relay/deploy.mjs   # Lambda + DynamoDB + S3 in ap-south-1, ~free
+node tools/island-bridge/bridge.mjs --lan   # restart: prints "Relay on"
+# then open http://localhost:7337/pair and scan again
+```
+
+The relay is a blind mailbox. Every message and file is sealed on one device and opened on the
+other with AES-256-GCM (`relay/seal.mjs`, the same bytes as `daily/seal.ts`), keyed from a 32-byte
+secret that exists only in `~/.halo/bridge.json` and on your phone. It reaches the phone only
+through the pairing QR, which is served to this computer only. AWS stores ciphertext under an
+unguessable channel, behind a relay key, and forgets it after a day (DynamoDB TTL, S3 lifecycle,
+1-day logs that never contain bodies). Tampered or replayed commands are rejected. Files over the
+relay are capped at 4 MB. Zerodha never goes through the bridge or the relay: the phone talks to
+Kite directly.
+
+`relay/deploy.mjs --update` ships handler changes. To remove it, delete the `halo-relay-*` Lambda,
+table, bucket and role.
+
 ## Security
 
 The token is the only thing standing between the network and "Allow". It's random, compared in

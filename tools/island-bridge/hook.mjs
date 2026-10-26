@@ -30,16 +30,14 @@ try {
     signal: AbortSignal.timeout(ask ? 100_000 : 2_000),
   });
   if (ask && res.ok) {
-    const { decision } = await res.json();
-    // "ask" (timed out) prints nothing: Claude Code then prompts in the terminal as usual.
-    if (decision === 'allow' || decision === 'deny') {
-      process.stdout.write(JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: 'PermissionRequest',
-          decision: decision === 'allow' ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied from the Halo island' },
-        },
-      }));
-    }
+    const { decision, answers } = await res.json();
+    const event = JSON.parse(raw || '{}');
+    // A question needs its answers echoed back with the original input; "allow" alone answers nothing.
+    const question = event.tool_name === 'AskUserQuestion';
+    const allow = answers ? { behavior: 'allow', updatedInput: { ...event.tool_input, answers } } : question ? null : { behavior: 'allow' };
+    // "ask" (timed out, or "On PC" from the island) prints nothing: Claude Code then prompts in the terminal as usual.
+    const out = decision === 'allow' ? allow : decision === 'deny' ? { behavior: 'deny', message: 'Denied from the Halo island' } : null;
+    if (out) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: out } }));
   }
 } catch {
   // Bridge not running or unreachable: never block Claude Code.
