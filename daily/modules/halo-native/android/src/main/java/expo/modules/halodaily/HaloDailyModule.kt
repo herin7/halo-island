@@ -47,6 +47,11 @@ class HaloDailyModule : Module() {
       mapOf("verifier" to verifier, "challenge" to challenge, "state" to b64(ByteArray(32).also(random::nextBytes)))
     }
 
+    /** Hex SHA-256: the checksum Kite's token exchange asks for. */
+    Function("sha256") { text: String ->
+      java.security.MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
     Function("load") { key: String -> prefs().getString(key, null) }
     Function("save") { key: String, value: String -> prefs().edit().putString(key, value).apply() }
 

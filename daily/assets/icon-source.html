@@ -1,0 +1,102 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:transparent;overflow:hidden}svg{display:block}</style>
+<body>
+<script>
+// ?mode=full|fg|bg|mono&size=N  — one design, every icon layer.
+const q = new URLSearchParams(location.search);
+const mode = q.get('mode') || 'full';
+if (q.has('dark')) document.documentElement.style.background = '#333';
+const S = Number(q.get('size') || 1024);
+// Adaptive icons get masked to ~61% of the canvas; shrink the art to stay inside.
+const scale = mode === 'fg' || mode === 'mono' ? 0.72 : 1;
+
+const ring = { rx: 352, ry: 132, w: 40, tilt: -10, lift: 40 };
+const pill = { w: 470, h: 168 };
+const cx = 512, cy = 520;
+
+const ellipse = (stroke, w, extra = '') =>
+  `<ellipse cx="${cx}" cy="${cy - ring.lift}" rx="${ring.rx}" ry="${ring.ry}" fill="none" stroke="${stroke}" stroke-width="${w}" ${extra}/>`;
+const pillPath = (inset = 0) => {
+  const w = pill.w - inset * 2, h = pill.h - inset * 2;
+  return `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${h / 2}"/>`;
+};
+const half = (id, top) => `<clipPath id="${id}"><rect x="-200" y="${top ? -200 : cy}" width="1424" height="${top ? cy + 200 : 1224 - cy}" transform="rotate(${ring.tilt} ${cx} ${cy})"/></clipPath>`;
+
+const defs = `
+<defs>
+  <radialGradient id="bg" cx="50%" cy="44%" r="72%">
+    <stop offset="0" stop-color="#1F1B2B"/><stop offset=".55" stop-color="#0A0A10"/><stop offset="1" stop-color="#030305"/>
+  </radialGradient>
+  <linearGradient id="spectrum" gradientUnits="userSpaceOnUse" x1="${cx - ring.rx}" y1="0" x2="${cx + ring.rx}" y2="0">
+    <stop offset="0" stop-color="#FF8A5C"/><stop offset=".32" stop-color="#D97757"/>
+    <stop offset=".58" stop-color="#A7A9FF"/><stop offset=".82" stop-color="#5AC8FA"/><stop offset="1" stop-color="#5FCB9C"/>
+  </linearGradient>
+  <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3A3946"/><stop offset=".45" stop-color="#0B0B10"/><stop offset="1" stop-color="#000"/>
+  </linearGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".35" stop-color="#fff" stop-opacity=".08"/>
+    <stop offset=".8" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#C9B8FF" stop-opacity=".35"/>
+  </linearGradient>
+  <radialGradient id="sheen" cx="38%" cy="0%" r="70%">
+    <stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="reflect" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF8A5C" stop-opacity=".28"/><stop offset=".5" stop-color="#A7A9FF" stop-opacity=".06"/><stop offset="1" stop-color="#5AC8FA" stop-opacity=".26"/></linearGradient>
+  <linearGradient id="reflectFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="#000"/></linearGradient>
+  <mask id="topHalf" maskContentUnits="objectBoundingBox"><rect width="1" height="1" fill="url(#reflectFade)"/></mask>
+  <radialGradient id="lens" cx="35%" cy="30%" r="70%">
+    <stop offset="0" stop-color="#5A6CFF"/><stop offset=".35" stop-color="#1A1B3A"/><stop offset="1" stop-color="#040408"/>
+  </radialGradient>
+  <filter id="bloom" filterUnits="userSpaceOnUse" x="-512" y="-512" width="2048" height="2048"><feGaussianBlur stdDeviation="22"/></filter>
+  <filter id="haze" filterUnits="userSpaceOnUse" x="-512" y="-512" width="2048" height="2048"><feGaussianBlur stdDeviation="70"/></filter>
+  <filter id="soft" filterUnits="userSpaceOnUse" x="-512" y="-512" width="2048" height="2048"><feGaussianBlur stdDeviation="5"/></filter>
+  <filter id="shadow" filterUnits="userSpaceOnUse" x="-512" y="-512" width="2048" height="2048"><feGaussianBlur stdDeviation="26"/></filter>
+  <linearGradient id="fadeFront" gradientUnits="userSpaceOnUse" x1="0" y1="${cy - ring.lift - 30}" x2="0" y2="${cy - ring.lift + 40}"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></linearGradient>
+  <mask id="front" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect x="-300" y="-300" width="1624" height="1624" fill="url(#fadeFront)" transform="rotate(${ring.tilt} ${cx} ${cy - ring.lift})"/></mask>
+</defs>`;
+
+// The halo, all of it behind the island: a wide haze that lights the room, a bloom, a hot core.
+const T = () => `transform="rotate(${ring.tilt} ${cx} ${cy - ring.lift})"`;
+const layers = (haze) => `
+  ${haze ? ellipse("url(#spectrum)", ring.w * 3.4, 'filter="url(#haze)" opacity=".5"') : ""}
+  ${ellipse("url(#spectrum)", ring.w * 1.5, 'filter="url(#bloom)" opacity=".85"')}
+  ${ellipse("url(#spectrum)", ring.w)}
+  ${ellipse("#fff", ring.w * 0.26, 'opacity=".8" filter="url(#soft)"')}`;
+const back = `<g ${T()}>${layers(true)}</g>`;
+// The near half again, over the island, faded in so there is no seam where it turns.
+const front = `<g mask="url(#front)"><g ${T()}>${layers(false)}</g></g>`;
+
+const lensX = cx + pill.w / 2 - pill.h / 2;
+const island = `
+<g>
+  <g fill="#000" opacity=".9" filter="url(#shadow)" transform="translate(0 30)">${pillPath(-4)}</g>
+  <g fill="url(#glass)">${pillPath()}</g>
+  <g fill="url(#sheen)">${pillPath(3)}</g>
+  <g fill="url(#reflect)" mask="url(#topHalf)">${pillPath(2)}</g>
+  <g fill="none" stroke="url(#rim)" stroke-width="3">${pillPath(1.5)}</g>
+  <circle cx="${lensX}" cy="${cy}" r="32" fill="url(#lens)"/>
+  <circle cx="${lensX}" cy="${cy}" r="32" fill="none" stroke="#fff" stroke-opacity=".14" stroke-width="2"/>
+  <circle cx="${lensX - 10}" cy="${cy - 11}" r="6.5" fill="#fff" opacity=".75"/>
+</g>`;
+
+const art = back + island + front;
+
+// Monochrome (themed icons): one ink; the near arc is cut out of the pill so the depth survives.
+const mono = `
+<mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/>
+  <g mask="url(#front)"><g ${T()}>${ellipse("#000", ring.w + 18)}</g></g>
+  <circle cx="${lensX}" cy="${cy}" r="26" fill="#000"/>
+</mask>
+<g ${T()}>${ellipse("#fff", ring.w)}</g>
+<g fill="#fff" mask="url(#cut)">${pillPath()}</g>
+<g mask="url(#front)"><g ${T()}>${ellipse("#fff", ring.w)}</g></g>`;
+
+const body = mode === 'bg'
+  ? `<rect width="1024" height="1024" fill="url(#bg)"/>`
+  : mode === 'mono'
+    ? `<g transform="translate(512 512) scale(${scale}) translate(-512 -520)">${mono}</g>`
+    : `${mode === 'full' ? '<rect width="1024" height="1024" fill="url(#bg)"/>' : ''}<g transform="translate(512 512) scale(${scale}) translate(-512 -520)">${art}</g>`;
+
+document.body.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 1024 1024">${defs}${body}</svg>`;
+</script>

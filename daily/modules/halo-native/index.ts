@@ -4,6 +4,7 @@ export interface Shared { text?: string | null; uri?: string | null; name?: stri
 
 interface HaloDaily {
   pkce(): { verifier: string; challenge: string; state: string };
+  sha256(text: string): string;
   load(key: string): string | null;
   save(key: string, value: string): void;
   hasStepSensor(): boolean;

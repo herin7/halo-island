@@ -2,7 +2,7 @@
   "expo": {
     "name": "Halo",
     "slug": "halo-daily",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,9 +17,33 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["android.permission.ACTIVITY_RECOGNITION"],
+      "permissions": [
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.ACTIVITY_RECOGNITION"
+      ],
       "intentFilters": [
-        { "action": "SEND", "category": ["DEFAULT"], "data": [{ "mimeType": "*/*" }] }
+        {
+          "action": "SEND",
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "*/*"
+            }
+          ]
+        },
+        {
+          "action": "SEND",
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "*/*"
+            }
+          ]
+        }
       ]
     },
     "plugins": [
@@ -27,12 +51,17 @@
         "halo-island",
         {
           "overlay": true,
+          "rive": true,
           "overlayReason": "Shows your day (Claude Code, builds, steps, food) as a floating island over other apps."
         }
       ],
       [
         "expo-build-properties",
-        { "android": { "usesCleartextTraffic": true } }
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ],
       [
         "expo-font",
@@ -44,7 +73,38 @@
             "../node_modules/@expo-google-fonts/inter-tight/600SemiBold/InterTight_600SemiBold.ttf"
           ]
         }
-      ]
-    ]
+      ],
+      "expo-image",
+      "expo-sharing"
+    ],
+    "owner": "herin18",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      },
+      "url": "https://u.expo.dev/71428375-ce29-42dd-ad2b-6f0c8278f23b"
+    },
+    "ios": {
+      "bundleIdentifier": "dev.haloisland.daily",
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSMotionUsageDescription": "Halo counts your steps for the day on the island.",
+        "NSLocalNetworkUsageDescription": "Halo connects to the Halo bridge on your computer.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "71428375-ce29-42dd-ad2b-6f0c8278f23b"
+      }
+    }
   }
 }

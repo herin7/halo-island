@@ -6,6 +6,8 @@ import { Linking, StyleSheet, Text, View } from 'react-native';
 import type { Window } from './claude';
 import { CardId, Saved, compact, kcal, protein, stepsToday } from './day';
 import type { Desk } from './desk';
+import { liveCurve, livePortfolio, rupees, sparkline } from './kite';
+import { canShareIn } from './platform';
 import { C, F } from './theme';
 import { Big, Card, Head, Icon, Meter, Pill, Press, T } from './ui';
 
@@ -21,6 +23,7 @@ export interface Ctx {
   signInClaude: () => void;
   refresh: () => void;
   sendClipboard: () => void;
+  loginKite: () => void;
 }
 
 /** These sit two to a row when they're next to each other. */
@@ -137,6 +140,61 @@ export function renderCard(id: CardId, x: Ctx): ReactNode {
         </Card>
       );
 
+    case 'kite': {
+      const k = saved.kite;
+      const pf = livePortfolio(saved, now);
+      const curveNow = liveCurve(saved, now);
+      const tone = (n: number) => ({ color: n >= 0 ? C.pass : C.fail });
+      return (
+        <Card onPress={pf ? () => Linking.openURL('https://kite.zerodha.com/holdings') : undefined} label="Zerodha">
+          <Head glyph="trend" color={C.ink} right={pf ? <T style={s.small}>{saved.kiteDemo ? 'Sample' : k?.user}</T> : null}>Zerodha</Head>
+          {pf ? (
+            <>
+              <View style={s.between}>
+                <Big value={rupees(pf.value)} size={34} />
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[s.rowTitle, tone(pf.dayPnl)]}>{rupees(pf.dayPnl, true)}</Text>
+                  <T style={[s.small, tone(pf.dayPnl)]}>{pf.dayPct >= 0 ? '+' : '−'}{Math.abs(pf.dayPct).toFixed(2)}% today</T>
+                </View>
+              </View>
+              {curveNow && curveNow.pts.length > 1 ? (
+                // Today's curve, from Halo's own polls: the free API has no chart, so we draw one.
+                <Sparkline values={sparkline(curveNow.pts).split(',').map(Number)} height={44} color={pf.dayPnl >= 0 ? C.pass : C.fail} fill thickness={2} />
+              ) : null}
+              <View style={s.between}>
+                <T style={s.small}>Invested {rupees(pf.invested)} · {pf.holdings} holdings</T>
+                <T style={[s.small, tone(pf.pnl)]}>{rupees(pf.pnl, true)}</T>
+              </View>
+              {pf.positions || pf.positionsPnl ? (
+                <View style={s.between}><T style={s.small}>Positions today · {pf.positions} open</T><T style={[s.small, tone(pf.positionsPnl)]}>{rupees(pf.positionsPnl, true)}</T></View>
+              ) : null}
+              {pf.movers.length ? (
+                <View style={s.movers}>
+                  {pf.movers.map((m) => (
+                    <View key={m.symbol} style={s.mover}>
+                      <Text style={s.moverSym}>{m.symbol}</Text>
+                      <Text style={[s.moverPct, tone(m.pct)]}>{m.pct >= 0 ? '+' : '−'}{Math.abs(m.pct).toFixed(1)}%</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <T style={s.small}>{pf.cash != null ? `Cash ${rupees(pf.cash)} · ` : ''}updated {ago(now - pf.at)}</T>
+            </>
+          ) : k?.apiKey ? (
+            <>
+              <T>Kite signs everyone out at 6 AM. Log in once a day to see your portfolio here and on the island.</T>
+              <View style={{ flexDirection: 'row' }}><Pill label="Log in to Kite" onPress={x.loginKite} color={C.ink} filled /></View>
+            </>
+          ) : (
+            <>
+              <T>Connect your Zerodha account with the free Kite Connect Personal API: holdings, day P&amp;L and positions, right on the island.</T>
+              <View style={{ flexDirection: 'row' }}><Pill label="Set up in Settings" onPress={x.openSettings} color={C.ink} /></View>
+            </>
+          )}
+        </Card>
+      );
+    }
+
     case 'github': {
       const gh = live?.gh;
       if (!gh) return null;
@@ -220,7 +278,7 @@ export function renderCard(id: CardId, x: Ctx): ReactNode {
       return (
         <Card>
           <Head glyph="send" color={C.desk}>Desk</Head>
-          <T>Share any file or link to <Text style={{ color: C.ink }}>Halo</Text> and it lands on your PC. From the PC: <Text style={s.code}>bridge.mjs send file</Text>.</T>
+          <T>{canShareIn ? <>Share any file or link to <Text style={{ color: C.ink }}>Halo</Text> and it lands on your PC. </> : null}From the PC: <Text style={s.code}>bridge.mjs send file</Text> puts it here.</T>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pill label="Send clipboard to PC" onPress={x.sendClipboard} color={C.desk} />
           </View>
@@ -250,6 +308,10 @@ const s = StyleSheet.create({
   pkg: { gap: 6, paddingVertical: 4 },
   release: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
   tag: { fontFamily: 'monospace', fontSize: 13, color: C.ink2 },
+  movers: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  mover: { flexDirection: 'row', gap: 6, paddingHorizontal: 10, height: 28, alignItems: 'center', borderRadius: 14, backgroundColor: C.fill },
+  moverSym: { fontFamily: F.medium, fontSize: 12.5, color: C.ink },
+  moverPct: { fontFamily: F.medium, fontSize: 12.5 },
   story: { gap: 2, paddingVertical: 4 },
   storyTitle: { fontFamily: F.regular, fontSize: 15, lineHeight: 20, color: C.ink, letterSpacing: -0.15 },
   code: { fontFamily: 'monospace', fontSize: 12.5, color: C.ink },

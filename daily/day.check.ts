@@ -44,7 +44,7 @@ const old = migrate({ water: 3, prefs: { cards: [{ id: 'news', on: false }] } } 
 assert.equal(old.water, 3);
 assert.equal(old.prefs.cards[0].id, 'news');
 assert.equal(old.prefs.cards[0].on, false);
-assert.equal(old.prefs.cards.length, 10);
+assert.equal(old.prefs.cards.length, 11);
 assert.equal(old.prefs.island.ask, true);
 
 console.log('day.check ok');

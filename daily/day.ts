@@ -5,15 +5,27 @@
  */
 
 import type { ClaudeAuth, ClaudeUsage } from './claude';
+import type { Curve, KiteAuth, Portfolio } from './kite';
+import type { DeskLink } from './desk';
 
 export interface Food { t: number; name: string; kcal: number; protein: number }
 export interface Story { id: number; title: string; url: string; points: number; comments: number; site: string }
 export interface Weather { temp: number; high: number; low: number; sky: string; label: string; city: string }
 
-export type CardId = 'weather' | 'steps' | 'claude' | 'food' | 'water' | 'github' | 'npm' | 'releases' | 'news' | 'desk';
-export type Moment = 'ask' | 'drop' | 'ci' | 'release' | 'protein' | 'claude';
+export type CardId = 'weather' | 'steps' | 'claude' | 'food' | 'water' | 'kite' | 'github' | 'npm' | 'releases' | 'news' | 'desk';
+export type Moment = 'ask' | 'drop' | 'ci' | 'market' | 'release' | 'protein' | 'claude';
 export interface Release { repo: string; tag: string; url: string; at: number }
 export interface Npm { name: string; week: number; day: number; version: string; month: number[] }
+
+/** Rows the island's day view can show. Buttons are rows too, so a profile can drop them. */
+export type Row = 'portfolio' | 'weather' | 'steps' | 'kcal' | 'protein' | 'water' | 'claude' | 'kite' | 'news' | 'bWater' | 'bFood' | 'bRead' | 'bSwitch';
+export const ROWS: Record<Row, string> = {
+  weather: 'Weather', steps: 'Steps ring', kcal: 'kcal ring', protein: 'Protein ring', water: 'Water ring',
+  portfolio: 'Portfolio (full)', claude: 'Claude limits', kite: 'Portfolio (one line)', news: 'Top story',
+  bWater: 'Water button', bFood: 'Food button', bRead: 'Read button', bSwitch: 'Switch-profile button',
+};
+/** A way of using Halo: what the island's day view and the dashboard show, and the resting value. */
+export interface Profile { name: string; rows: Row[]; cards: CardId[]; idle: 'steps' | 'claude' | 'kcal' | 'protein' | 'kite' }
 
 /** Everything you can change in Settings. */
 export interface Prefs {
@@ -21,8 +33,9 @@ export interface Prefs {
   cards: { id: CardId; on: boolean }[];
   /** Which moments may take over the island. */
   island: Record<Moment, boolean>;
-  /** What the resting island shows on the right. */
-  idle: 'steps' | 'claude' | 'kcal' | 'protein';
+  /** Profiles, and which one is on. */
+  profiles: Profile[];
+  profile: number;
   reminder: { on: boolean; hours: number[] };
   newsMin: number;
   stepCm: number;
@@ -31,7 +44,7 @@ export interface Prefs {
 }
 
 export interface Saved {
-  desk: { addr: string; token: string };
+  desk: DeskLink;
   overlay: boolean;
   goals: { steps: number; kcal: number; protein: number; water: number };
   day: string;
@@ -55,6 +68,14 @@ export interface Saved {
   prefs: Prefs;
   /** Swiped away: the island only comes back for moments that need you. */
   quiet: boolean;
+  /** Zerodha: your API app, today's session, and the last portfolio read. */
+  kite: KiteAuth | null;
+  kitePf: Portfolio | null;
+  /** Today's day-P&L readings, and the market moments you've already seen. */
+  kiteCurve: Curve | null;
+  kiteSeen: string[];
+  /** Show a moving sample portfolio instead of yours: for demos and screen recordings. */
+  kiteDemo: boolean;
   npmStats: Npm[];
   npmAt: number;
   releases: Release[];
@@ -95,19 +116,25 @@ export const fresh = (): Saved => ({
   claudeUsage: null,
   prefs: defaultPrefs(),
   quiet: false,
+  kite: null,
+  kitePf: null,
+  kiteCurve: null,
+  kiteSeen: [],
+  kiteDemo: false,
   npmStats: [],
   npmAt: 0,
   releases: [],
   releasesAt: 0,
 });
 
-export const CARDS: Record<CardId, string> = { weather: 'Weather', steps: 'Steps', claude: 'Claude Code', food: 'Food', water: 'Water', github: 'GitHub', npm: 'npm packages', releases: 'Releases', news: 'Hacker News', desk: 'Desk' };
-export const MOMENTS: Record<Moment, string> = { ask: 'Claude asks permission', drop: 'File or text from PC', ci: 'CI runs', release: 'New releases', protein: 'Protein reminder', claude: 'Claude working' };
+export const CARDS: Record<CardId, string> = { weather: 'Weather', steps: 'Steps', claude: 'Claude Code', food: 'Food', water: 'Water', kite: 'Zerodha', github: 'GitHub', npm: 'npm packages', releases: 'Releases', news: 'Hacker News', desk: 'Desk' };
+export const MOMENTS: Record<Moment, string> = { ask: 'Claude asks permission', drop: 'File or text from PC', ci: 'CI runs', market: 'Market bell (open, big moves, close)', release: 'New releases', protein: 'Protein reminder', claude: 'Claude working' };
 
 export const defaultPrefs = (): Prefs => ({
   cards: (Object.keys(CARDS) as CardId[]).map((id) => ({ id, on: true })),
-  island: { ask: true, drop: true, ci: true, release: true, protein: true, claude: true },
-  idle: 'steps',
+  island: { ask: true, drop: true, ci: true, market: true, release: true, protein: true, claude: true },
+  profiles: defaultProfiles(),
+  profile: 0,
   reminder: { on: true, hours: [13, 17, 21] },
   newsMin: 50,
   stepCm: 75,
@@ -115,12 +142,25 @@ export const defaultPrefs = (): Prefs => ({
   repos: ['facebook/react-native', 'expo/expo', 'software-mansion/react-native-reanimated'],
 });
 
+const ALL_CARDS = (): CardId[] => ['weather', 'steps', 'claude', 'food', 'water', 'kite', 'github', 'npm', 'releases', 'news', 'desk'];
+export const defaultProfiles = (): Profile[] => [
+  { name: 'Everything', rows: Object.keys(ROWS) as Row[], cards: ALL_CARDS(), idle: 'steps' },
+  { name: 'Work', rows: ['claude', 'news', 'bRead', 'bSwitch'], cards: ['claude', 'github', 'npm', 'releases', 'news', 'desk'], idle: 'claude' },
+  { name: 'Markets', rows: ['portfolio', 'bSwitch'], cards: ['kite', 'news'], idle: 'kite' },
+  { name: 'Work + Markets', rows: ['portfolio', 'claude', 'bSwitch'], cards: ['claude', 'kite', 'github', 'desk'], idle: 'kite' },
+  { name: 'Health', rows: ['weather', 'steps', 'kcal', 'protein', 'water', 'bWater', 'bFood', 'bSwitch'], cards: ['weather', 'steps', 'food', 'water'], idle: 'steps' },
+];
+export const activeProfile = (s: Saved): Profile => s.prefs.profiles[s.prefs.profile] ?? s.prefs.profiles[0] ?? defaultProfiles()[0];
+
 /** Saved data from an older version: new fields and new cards get their defaults. */
 export function migrate(raw: Partial<Saved>): Saved {
   const base = fresh();
   const prefs = { ...base.prefs, ...raw.prefs, island: { ...base.prefs.island, ...raw.prefs?.island }, reminder: { ...base.prefs.reminder, ...raw.prefs?.reminder } };
   const known = new Set(prefs.cards.map((c) => c.id));
   prefs.cards = [...prefs.cards.filter((c) => c.id in CARDS), ...base.prefs.cards.filter((c) => !known.has(c.id))];
+  // Before profiles there was one global resting value; it becomes the first profile's.
+  const oldIdle = (raw.prefs as { idle?: Profile['idle'] } | undefined)?.idle;
+  if (oldIdle && !raw.prefs?.profiles) prefs.profiles = prefs.profiles.map((p, i) => (i === 0 ? { ...p, idle: oldIdle } : p));
   return { ...base, ...raw, prefs } as Saved;
 }
 
@@ -154,6 +194,14 @@ export function addSteps(s: Saved, total: number, now = Date.now()): Saved {
     st.last = total;
   }
   return { ...s, steps: st };
+}
+
+/** iOS gives today's steps directly (Core Motion since midnight): store them as a counter from 0. */
+export function setStepsToday(s: Saved, steps: number, now = Date.now()): Saved {
+  const hours = [...s.steps.hours];
+  const before = stepsToday(s);
+  if (steps > before) hours[new Date(now).getHours()] += steps - before;
+  return { ...s, steps: { base: 0, carry: 0, last: steps, hours } };
 }
 
 export function logFood(s: Saved, name: string, kcalN: number, proteinN: number, now = Date.now()): Saved {

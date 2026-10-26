@@ -6,7 +6,7 @@
  */
 import { Linking } from 'react-native';
 
-import { native } from './modules/halo-native';
+import { pkce } from './platform';
 
 const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 const AUTHORIZE = 'https://claude.com/cai/oauth/authorize';
@@ -22,9 +22,8 @@ export interface ClaudeUsage { five: Window | null; week: Window | null; opus: W
 /** The sign-in that's waiting for its code. Kept in memory: a login is finished in one sitting. */
 let pending: { verifier: string; state: string } | null = null;
 
-export function signIn() {
-  if (!native) throw new Error('Needs the Halo build, not Expo Go');
-  const p = native.pkce();
+export async function signIn() {
+  const p = await pkce();
   pending = { verifier: p.verifier, state: p.state };
   const q = { code: 'true', client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT, scope: SCOPE, code_challenge: p.challenge, code_challenge_method: 'S256', state: p.state };
   return Linking.openURL(`${AUTHORIZE}?${Object.entries(q).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}`);
