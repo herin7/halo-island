@@ -1,5 +1,5 @@
 export * from './spec';
-export { island, start, endAll, onAction, focus, setState, get, registerAssets, resolveAsset, capabilities, getCutout, requestPermissions, openLiveUpdateSettings, asset } from './island';
+export { island, start, endAll, onAction, focus, setState, get, registerAssets, resolveAsset, capabilities, dodge, getCutout, requestPermissions, openLiveUpdateSettings, asset } from './island';
 export type { AssetSource, Capabilities, LiveIsland, StartOptions } from './island';
 export { HaloIslandHost, IslandPreview } from './host';
 export type { HostProps, Placement } from './host';
