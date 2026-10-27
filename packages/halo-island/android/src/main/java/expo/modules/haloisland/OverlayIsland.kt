@@ -4,7 +4,9 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
+import android.content.ComponentCallbacks
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
@@ -15,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
@@ -35,7 +38,8 @@ internal class OverlayIsland(private val context: Context) {
   private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
   private val handler = Handler(Looper.getMainLooper())
   private val density = context.resources.displayMetrics.density
-  private val statusBarInset = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+  /** Read live: the status bar is shorter in landscape. */
+  private val statusBarInset get() = context.resources.getIdentifier("status_bar_height", "dimen", "android")
     .takeIf { it > 0 }?.let(context.resources::getDimensionPixelSize) ?: dp(28)
   private val compactMinWidth = dp(120)
   /** Grows with the system font size so large text never clips. */
@@ -53,8 +57,25 @@ internal class OverlayIsland(private val context: Context) {
   private val values = mutableMapOf<String, Float>()
   private val autoCollapse = Runnable { setExpanded(false) }
   private var glow: ValueAnimator? = null
+  /** The state last drawn, so identical updates (every tick of a poller) cost nothing. */
+  private var rendered: String? = null
+  /** `fade` or `hide` while getting out of the way of a heads-up notification, else null. */
+  private var dodging: String? = null
+  private val endDodge = Runnable { dodging = null; applyPresence() }
+  /** Another app is fullscreen (video, game): the island steps aside until the status bar returns. */
+  private var fullscreen = false
+  private var presence: Animator? = null
+  private val configCallbacks = object : ComponentCallbacks {
+    override fun onConfigurationChanged(newConfig: Configuration) = reposition()
+    @Deprecated("Required by the interface") override fun onLowMemory() = Unit
+  }
+
+  val isShowing get() = root != null && !fullscreen && dodging != "hide"
+
+  private val theme get() = Theme(entry?.template?.optJSONObject("theme"))
 
   fun show(next: Islands.Entry) {
+    if (next === entry && root != null && next.state.toString() == rendered) return
     if (entry?.id != next.id) {
       values.clear()
       if (isExpanded) setExpanded(false)
@@ -72,7 +93,20 @@ internal class OverlayIsland(private val context: Context) {
     container.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
   }
 
+  /** Steps out of the way for [durationMs]; see [HaloIsland.dodge]. Never while the user has it open. */
+  fun dodge(mode: String, durationMs: Long) {
+    if (root == null || isExpanded) return
+    handler.removeCallbacks(endDodge)
+    dodging = if (mode == "hide") "hide" else "fade"
+    applyPresence()
+    handler.postDelayed(endDodge, durationMs)
+  }
+
   fun remove() {
+    runCatching { context.unregisterComponentCallbacks(configCallbacks) }
+    dodging = null
+    fullscreen = false
+    rendered = null
     glow?.cancel()
     glow = null
     handler.removeCallbacksAndMessages(null)
@@ -109,25 +143,95 @@ internal class OverlayIsland(private val context: Context) {
       gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
       // Overlays can't receive touches in the status bar region, so the pill sits just below it,
       // and below the camera on devices whose notch runs deeper than the status bar.
-      y = max(statusBarInset, cutoutBottom()) + dp(4)
+      y = topOffset()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
       }
     }
+    watchFullscreen(container)
     windowManager.addView(container, layoutParams)
+    context.registerComponentCallbacks(configCallbacks)
     root = container
     params = layoutParams
     container.alpha = 0f
     container.scaleX = 0.6f
     container.scaleY = 0.6f
-    container.animate().alpha(1f).setDuration(if (animationsEnabled()) 160L else 0L).start()
+    container.animate().alpha(restingAlpha()).setDuration(if (animationsEnabled()) 160L else 0L).start()
     spring(container, 1f, 1f)
+  }
+
+  // Overlays can't receive touches in the status bar region, so the pill sits just below it,
+  // and below the camera on devices whose notch runs deeper than the status bar.
+  private fun topOffset() = max(statusBarInset, cutoutBottom()) + dp(4)
+
+  /** Rotation, folding and resizing move the status bar and change the width under a live island. */
+  private fun reposition() {
+    val container = root ?: return
+    val p = params ?: return
+    p.y = topOffset()
+    runCatching { windowManager.updateViewLayout(container, p) }
+    render()
+  }
+
+  @Suppress("DEPRECATION")
+  private fun watchFullscreen(container: View) {
+    val hideInFullscreen = { theme.hideInFullscreen }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      container.setOnApplyWindowInsetsListener { _, insets ->
+        setFullscreen(hideInFullscreen() && !insets.isVisible(WindowInsets.Type.statusBars()))
+        insets
+      }
+    } else {
+      container.setOnSystemUiVisibilityChangeListener { flags ->
+        setFullscreen(hideInFullscreen() && flags and View.SYSTEM_UI_FLAG_FULLSCREEN != 0)
+      }
+    }
+  }
+
+  private fun setFullscreen(value: Boolean) {
+    if (fullscreen == value) return
+    fullscreen = value
+    if (value) setExpanded(false)
+    applyPresence()
+  }
+
+  /** Ghost islands rest see-through; open, they're solid so they can be read. */
+  private fun restingAlpha() = if (theme.material == "ghost" && !isExpanded) theme.ghostOpacity else 1f
+
+  /** Applies fullscreen and dodge on top of the resting look: visibility, position and touchability. */
+  private fun applyPresence() {
+    val container = root ?: return
+    val p = params ?: return
+    val away = fullscreen || dodging == "hide"
+    val alpha = when {
+      away -> 0f
+      dodging == "fade" -> 0.12f
+      else -> restingAlpha()
+    }
+    // Own animators: ViewPropertyAnimator is shared with the morph, whose end listener must fire once.
+    presence?.cancel()
+    presence = android.animation.AnimatorSet().apply {
+      playTogether(
+        android.animation.ObjectAnimator.ofFloat(container, View.ALPHA, alpha),
+        android.animation.ObjectAnimator.ofFloat(container, View.TRANSLATION_Y, if (away) -(p.y + p.height).toFloat() else 0f),
+      )
+      duration = if (animationsEnabled()) 200L else 0L
+      start()
+    }
+    // Out of the way means out of the way for fingers too: taps reach the app underneath.
+    val flags = if (alpha < 0.2f) p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+    else p.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+    if (flags != p.flags) {
+      p.flags = flags
+      runCatching { windowManager.updateViewLayout(container, p) }
+    }
   }
 
   private fun render() {
     val current = entry ?: return
     val container = root ?: return
     val theme = Theme(current.template.optJSONObject("theme"))
+    rendered = current.state.toString()
     val renderer = Renderer(context, theme, current.state, values) { action ->
       if (action == "close") return@Renderer setExpanded(false)
       HaloIslandModule.dispatch(context, current.id, action)
@@ -167,9 +271,11 @@ internal class OverlayIsland(private val context: Context) {
     val theme = Theme(json)
     val colors = json?.optJSONArray("gradient")?.let { a -> (0 until a.length()).mapNotNull { runCatching { android.graphics.Color.parseColor(a.getString(it)) }.getOrNull() } }
     val drawable = if (colors != null && colors.size > 1) android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR, colors.toIntArray())
-    else android.graphics.drawable.GradientDrawable().apply { setColor(theme.background) }
+    else android.graphics.drawable.GradientDrawable().apply {
+      setColor(if (theme.material == "glass") withAlpha(theme.background, 0.78f) else theme.background)
+    }
     drawable.cornerRadius = radius
-    drawable.setStroke(dp(1), theme.border)
+    drawable.setStroke(dp(1), if (theme.material == "glass") withAlpha(android.graphics.Color.WHITE, 0.2f) else theme.border)
     return drawable
   }
 
@@ -299,7 +405,7 @@ internal class OverlayIsland(private val context: Context) {
     container.animate().translationY(-dp(48).toFloat()).alpha(0f).scaleX(0.85f).scaleY(0.85f).setDuration(220L).withEndAction {
       HaloIslandModule.dispatch(context, current.id, "dismiss")
       handler.postDelayed({
-        if (entry === current && root === container) container.animate().translationY(0f).alpha(1f).scaleX(1f).scaleY(1f).setDuration(260L).start()
+        if (entry === current && root === container) container.animate().translationY(0f).alpha(restingAlpha()).scaleX(1f).scaleY(1f).setDuration(260L).start()
       }, 900L)
     }.start()
   }
@@ -323,6 +429,7 @@ internal class OverlayIsland(private val context: Context) {
     handler.removeCallbacks(autoCollapse)
     isExpanded = expanded
     root?.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+    if (expanded) root?.alpha = 1f
     if (expanded) expand() else collapse()
   }
 
@@ -363,6 +470,7 @@ internal class OverlayIsland(private val context: Context) {
           container.scaleY = 1f
           render()
           compactHost.animate().alpha(1f).setDuration(if (animationsEnabled()) 140L else 0L).start()
+          if (dodging == null && !fullscreen) container.alpha = restingAlpha()
           return true
         }
       })
