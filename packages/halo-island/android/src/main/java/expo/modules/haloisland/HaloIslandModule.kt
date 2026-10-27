@@ -58,6 +58,9 @@ class HaloIslandModule : Module() {
     OnCreate { active = this@HaloIslandModule }
     OnDestroy { if (active === this@HaloIslandModule) active = null }
 
+    // A foreground service can't start from the background (Android 12+); retry once we're visible.
+    OnActivityEntersForeground { UiThreadUtil.runOnUiThread { Islands.resync(context) } }
+
     RegisterActivityContracts {
       overlayLauncher = registerForActivityResult(OverlayContract(context))
     }
@@ -82,6 +85,12 @@ class HaloIslandModule : Module() {
     Function("endAll") {
       val ctx = context
       UiThreadUtil.runOnUiThread { Islands.endAll(ctx) }
+    }
+
+    Function("overlayShowing") { HaloIsland.overlayShowing() }
+
+    Function("dodge") { mode: String, durationMs: Double ->
+      UiThreadUtil.runOnUiThread { HaloIsland.dodge(mode, durationMs.toLong()) }
     }
 
     Function("capabilities") {
@@ -176,6 +185,7 @@ class HaloIslandModule : Module() {
      * running at all, the action is kept until the app calls consumePendingActions().
      */
     internal fun dispatch(context: Context, id: String, action: String) {
+      if (HaloIsland.actionHandler?.invoke(id, action) == true) return
       val react = active?.appContext?.reactContext as? ReactContext
       if (react == null) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

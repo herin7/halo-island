@@ -18,11 +18,47 @@ import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import kotlin.math.roundToInt
 
+/**
+ * Kotlin entry point, for apps that drive islands from native code (a notification listener, a
+ * broadcast receiver, an FCM service) without starting JS. Call on the main thread.
+ */
+object HaloIsland {
+  fun start(context: Context, id: String, template: JSONObject, state: JSONObject = JSONObject(), overlay: Boolean = true, notification: Boolean = false) =
+    Islands.start(context, Islands.Entry(id, template, state, overlay, notification))
+
+  fun update(context: Context, id: String, state: JSONObject, alert: Boolean = false) = Islands.update(context, id, state, alert)
+
+  fun end(context: Context, id: String) = Islands.end(context, id)
+
+  fun state(id: String): JSONObject? = Islands.get(id)?.state
+
+  /**
+   * Lets a long-lived component the system keeps alive (a NotificationListenerService, an
+   * AccessibilityService) host the overlay instead of the foreground service, so no ongoing
+   * notification is needed. Detach in its onDestroy.
+   */
+  fun attachHost(context: Context) = Islands.attachHost(context)
+
+  fun detachHost(context: Context) = Islands.detachHost(context)
+
+  /** Gets out of the way for [durationMs]: `fade` turns see-through and lets touches pass, `hide` slides it away. */
+  fun dodge(mode: String = "fade", durationMs: Long = 5_000L) = Islands.overlay()?.dodge(mode, durationMs)
+
+  /** Sees every action before JS does; return true to consume it. */
+  @Volatile var actionHandler: ((id: String, action: String) -> Boolean)? = null
+
+  /** True when the overlay is actually on screen right now. */
+  fun overlayShowing(): Boolean = Islands.overlay()?.isShowing == true
+}
+
 /** Every running island in this process. The most recent overlay island owns the overlay. */
 internal object Islands {
   class Entry(val id: String, val template: JSONObject, var state: JSONObject, val overlay: Boolean, val notification: Boolean)
 
   private val entries = LinkedHashMap<String, Entry>()
+  /** Notification ids handed out per island id; hashing could collide two islands into one notification. */
+  private val notificationIds = HashMap<String, Int>()
+  private var host: OverlayIsland? = null
 
   fun start(context: Context, entry: Entry) {
     entries.remove(entry.id)
@@ -34,7 +70,7 @@ internal object Islands {
     val entry = entries[id] ?: return
     entry.state = state
     present(context, entry)
-    if (alert && overlayEntry() === entry) IslandService.alert()
+    if (alert && overlayEntry() === entry) overlay()?.alert()
   }
 
   fun end(context: Context, id: String) {
@@ -48,25 +84,52 @@ internal object Islands {
     entries.keys.toList().forEach { end(context, it) }
   }
 
+  fun get(id: String): Entry? = entries[id]
+
   fun overlayEntry(): Entry? = entries.values.lastOrNull { it.overlay }
 
+  /** Whichever overlay is live: the attached host's, or the foreground service's. */
+  fun overlay(): OverlayIsland? = host ?: IslandService.island()
+
+  fun attachHost(context: Context) {
+    if (host != null) return
+    host = OverlayIsland(context.applicationContext)
+    IslandService.stop(context)
+    // Overlay-only islands needed a notification only to keep the service in the foreground.
+    entries.values.filter { !it.notification }.forEach { manager(context).cancel(notificationId(it.id)) }
+    syncOverlay(context)
+  }
+
+  fun detachHost(context: Context) {
+    host?.remove() ?: return
+    host = null
+    entries.values.filter { it.overlay }.forEach { present(context, it) }
+  }
+
   private fun present(context: Context, entry: Entry) {
-    if (entry.notification || entry.overlay) {
+    if (entry.notification || (entry.overlay && host == null)) {
       runCatching { manager(context).notify(notificationId(entry.id), Notifications.build(context, entry)) }
     }
     syncOverlay(context)
   }
 
+  fun resync(context: Context) = syncOverlay(context)
+
   private fun syncOverlay(context: Context) {
     val top = overlayEntry()
+    val host = host
+    if (host != null) {
+      if (top == null || !Settings.canDrawOverlays(context)) host.remove() else host.show(top)
+      return
+    }
     if (top == null || !canShowOverlay(context)) return IslandService.stop(context)
     IslandService.show(context, top)
   }
 
   fun canShowOverlay(context: Context) =
-    Settings.canDrawOverlays(context) && IslandService.isDeclared(context)
+    Settings.canDrawOverlays(context) && (host != null || IslandService.isDeclared(context))
 
-  fun notificationId(id: String) = 0x4A10 + (id.hashCode() and 0xFFFF)
+  fun notificationId(id: String) = notificationIds.getOrPut(id) { 0x4A10 + notificationIds.size }
 
   fun manager(context: Context) = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 }
@@ -80,13 +143,7 @@ internal object Notifications {
   private const val CHANNEL = "halo_island"
 
   fun build(context: Context, entry: Islands.Entry): android.app.Notification {
-    val manager = Islands.manager(context)
-    if (manager.getNotificationChannel(CHANNEL) == null) {
-      manager.createNotificationChannel(NotificationChannel(CHANNEL, "Live activities", NotificationManager.IMPORTANCE_DEFAULT).apply {
-        setSound(null, null)
-        enableVibration(false)
-      })
-    }
+    ensureChannel(context)
     val t = entry.template
     val state = entry.state
     val theme = Theme(t.optJSONObject("theme"))
@@ -165,6 +222,21 @@ internal object Notifications {
     return builder.build()
   }
 
+  /** Only ever shown for an instant, when the service has to start foreground with nothing to show. */
+  fun placeholder(context: Context): android.app.Notification {
+    ensureChannel(context)
+    return NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.halo_ic_bolt).setSilent(true).build()
+  }
+
+  private fun ensureChannel(context: Context) {
+    val manager = Islands.manager(context)
+    if (manager.getNotificationChannel(CHANNEL) != null) return
+    manager.createNotificationChannel(NotificationChannel(CHANNEL, "Live activities", NotificationManager.IMPORTANCE_DEFAULT).apply {
+      setSound(null, null)
+      enableVibration(false)
+    })
+  }
+
   private fun appLabel(context: Context) = context.applicationInfo.loadLabel(context.packageManager).toString()
 }
 
@@ -184,7 +256,14 @@ class IslandService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    val entry = Islands.overlayEntry() ?: run { stopSelf(); return START_NOT_STICKY }
+    // startForegroundService() promised a startForeground() call. If the island ended before we
+    // got here, keep the promise with a placeholder and leave, or Android kills the app.
+    val entry = Islands.overlayEntry() ?: run {
+      runCatching { ServiceCompat.startForeground(this, PLACEHOLDER_ID, Notifications.placeholder(this), serviceType()) }
+      ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+      stopSelf()
+      return START_NOT_STICKY
+    }
     present(entry)
     return START_NOT_STICKY
   }
@@ -192,13 +271,14 @@ class IslandService : Service() {
   private fun present(entry: Islands.Entry) {
     val id = Islands.notificationId(entry.id)
     if (foregroundId != id) {
-      val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
-      runCatching { ServiceCompat.startForeground(this, id, Notifications.build(this, entry), type) }
+      runCatching { ServiceCompat.startForeground(this, id, Notifications.build(this, entry), serviceType()) }
         .onFailure { stopSelf(); return }
       foregroundId = id
     }
     (island ?: OverlayIsland(this).also { island = it }).show(entry)
   }
+
+  private fun serviceType() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
 
   override fun onDestroy() {
     island?.remove()
@@ -208,7 +288,10 @@ class IslandService : Service() {
   }
 
   companion object {
+    private const val PLACEHOLDER_ID = 0x4A0F
     @Volatile private var active: IslandService? = null
+
+    internal fun island(): OverlayIsland? = active?.island
 
     internal fun isDeclared(context: Context) = runCatching {
       context.packageManager.getServiceInfo(ComponentName(context, IslandService::class.java), 0)
@@ -218,10 +301,6 @@ class IslandService : Service() {
       active?.let { it.present(entry); return }
       // Throws if the app is in the background (Android 12+); the island appears on next foreground start.
       runCatching { ContextCompat.startForegroundService(context, Intent(context, IslandService::class.java)) }
-    }
-
-    internal fun alert() {
-      active?.island?.alert()
     }
 
     internal fun stop(context: Context) {
