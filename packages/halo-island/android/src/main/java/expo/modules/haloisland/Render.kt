@@ -45,8 +45,17 @@ internal class Theme(json: JSONObject?) {
   /** Unset key line takes the accent, as Apple recommends. */
   val border = json.color("border", withAlpha(accent, 0.3f))
   val radius = json?.optDouble("radius", 32.0)?.toFloat() ?: 32f
+  /** `s`/`m`/`l` scale the whole island (height, text, icons); unset keeps the original look. */
+  private val size = SIZES[json?.optString("size")]
+  val scale = size?.second ?: 1f
   /** Compact pill height in dp; the pill never gets shorter than its content. */
-  val compactHeight = json?.optDouble("compactHeight", 38.0)?.toFloat() ?: 38f
+  val compactHeight = size?.first ?: json?.optDouble("compactHeight", 38.0)?.toFloat() ?: 38f
+  /** `solid`, `glass` (translucent with a lit edge) or `ghost` (see-through, for staying out of the way). */
+  val material = json?.optString("material")?.takeIf { it.isNotEmpty() } ?: "solid"
+  /** How visible a ghost island is, 0..1. */
+  val ghostOpacity = json?.optDouble("ghostOpacity", 0.4)?.toFloat()?.coerceIn(0.1f, 1f) ?: 0.4f
+  /** Overlay steps aside while another app is fullscreen (video, games). */
+  val hideInFullscreen = json?.optBoolean("hideInFullscreen", true) ?: true
   /** Light pooling at the bottom of the expanded island; transparent when unset. */
   val aura = json.color("aura", Color.TRANSPARENT)
   private val fonts = json?.optJSONObject("fonts")
@@ -58,6 +67,11 @@ internal class Theme(json: JSONObject?) {
     val i = order.indexOf(weight ?: "regular").coerceAtLeast(0)
     return order.sortedWith(compareBy<String> { kotlin.math.abs(order.indexOf(it) - i) }.thenByDescending { order.indexOf(it) })
       .firstNotNullOfOrNull { f.optString(it).takeIf { s -> s.isNotEmpty() } }
+  }
+
+  companion object {
+    /** Compact height (dp) and content scale per size. Same table as SIZES in spec.ts. */
+    private val SIZES = mapOf("s" to (30f to 0.86f), "m" to (34f to 0.93f), "l" to (37f to 1f))
   }
 }
 
@@ -105,7 +119,7 @@ internal class Renderer(
   private val previous: MutableMap<String, Float>,
   private val onAction: (String) -> Unit,
 ) {
-  private val density = context.resources.displayMetrics.density
+  private val density = context.resources.displayMetrics.density * theme.scale
 
   fun build(node: JSONObject?, path: String = "0"): View? {
     node ?: return null
@@ -258,7 +272,7 @@ internal class Renderer(
   fun label(value: String, style: JSONObject?) = TextView(context).apply {
     text = value
     val size = style?.optDouble("size", 14.0)?.toFloat() ?: 14f
-    setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+    setTextSize(TypedValue.COMPLEX_UNIT_SP, size * theme.scale)
     // Large text reads better slightly tightened, the way display type is set.
     if (size >= 20f) letterSpacing = -0.02f
     setTextColor(style.color("color", theme.foreground))
@@ -437,7 +451,7 @@ internal class Renderer(
     val target = num(node.opt("to"), state).toLong()
     val countUp = node.optBoolean("countUp")
     return Chronometer(context).apply {
-      setTextSize(TypedValue.COMPLEX_UNIT_SP, style?.optDouble("size", 14.0)?.toFloat() ?: 14f)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, (style?.optDouble("size", 14.0)?.toFloat() ?: 14f) * theme.scale)
       setTextColor(style.color("color", theme.foreground))
       typeface = font(style?.optString("font")?.takeIf { it.isNotEmpty() } ?: theme.fontFor(style?.optString("weight")))
         ?: typeface(style?.optString("weight"))

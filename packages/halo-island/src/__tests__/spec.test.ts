@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { DEFAULT_THEME, button, chips, column, expandArcFlags, fill, fontFor, line, num, nums, on, pet, row, slider, text, toggle, visible, when } from '../spec';
+import { DEFAULT_THEME, SIZES, button, chips, column, expandArcFlags, fill, fontFor, line, num, nums, on, pet, resolveTheme, row, scaleOf, slider, text, toggle, visible, when } from '../spec';
 
 test('fill replaces placeholders and blanks missing keys', () => {
   expect(fill('{eta} min · {driver}', { eta: 4, driver: 'Asha' })).toBe('4 min · Asha');
@@ -69,4 +69,17 @@ test('new builders produce the spec shapes', () => {
 test('default theme ships solid material, no aura', () => {
   expect(DEFAULT_THEME.material).toBe('solid');
   expect(DEFAULT_THEME.aura).toBe('');
+});
+
+test('size sets compact height and content scale; unset keeps the original look', () => {
+  expect(resolveTheme({ size: 's' }, 'dark')?.compactHeight).toBe(SIZES.s.height);
+  expect(resolveTheme({ size: 'l', compactHeight: 50 }, 'dark')?.compactHeight).toBe(SIZES.l.height);
+  expect(resolveTheme({ compactHeight: 28 }, 'dark')?.compactHeight).toBe(28);
+  expect(scaleOf({ size: 's' })).toBeLessThan(1);
+  expect(scaleOf({})).toBe(1);
+});
+
+test('default theme rests visible and hides in fullscreen', () => {
+  expect(DEFAULT_THEME.ghostOpacity).toBe(0.4);
+  expect(DEFAULT_THEME.hideInFullscreen).toBe(true);
 });

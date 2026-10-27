@@ -141,12 +141,25 @@ export interface IslandTheme {
    * Never smaller than its content, and on iOS never smaller than the camera it wraps.
    */
   compactHeight?: number;
+  /**
+   * Scales the whole island (height, text, icons) — `s` for a slim pill that stays out of the way.
+   * Sets compactHeight; unset keeps the original 37pt look.
+   */
+  size?: IslandSize;
   /** Border breathes in this color. */
   glow?: Color;
   /** Island fill as a gradient (overrides background). */
   gradient?: Color[];
-  /** `glass`: translucent, blurred material with a lit edge (Liquid Glass on iOS 26). */
-  material?: 'solid' | 'glass';
+  /**
+   * `glass`: translucent, blurred material with a lit edge (Liquid Glass on iOS 26).
+   * `ghost`: see-through at rest (`ghostOpacity`), solid while open — for an island that should
+   * never hide what's under it.
+   */
+  material?: 'solid' | 'glass' | 'ghost';
+  /** How visible a `ghost` island is at rest, 0.1–1. Default 0.4. */
+  ghostOpacity?: number;
+  /** Android overlay: step aside while another app is fullscreen (video, games). Default true. */
+  hideInFullscreen?: boolean;
   /** Light that pools at the bottom of the expanded island, in this color. */
   aura?: Color;
   /**
@@ -163,8 +176,21 @@ export interface IslandTheme {
 export function resolveTheme(theme: IslandTheme | undefined, scheme: string | null | undefined): IslandTheme | undefined {
   if (!theme) return theme;
   const { light, dark, ...base } = theme;
-  return { ...base, ...(scheme === 'dark' ? dark : scheme === 'light' ? light : undefined) };
+  const resolved: IslandTheme = { ...base, ...(scheme === 'dark' ? dark : scheme === 'light' ? light : undefined) };
+  return resolved.size ? { ...resolved, compactHeight: SIZES[resolved.size].height } : resolved;
 }
+
+export type IslandSize = 's' | 'm' | 'l';
+
+/** Compact height and content scale per size. Same table as Theme.SIZES in Render.kt. */
+export const SIZES: Record<IslandSize, { height: number; scale: number }> = {
+  s: { height: 30, scale: 0.86 },
+  m: { height: 34, scale: 0.93 },
+  l: { height: 37, scale: 1 },
+};
+
+/** Content scale for a theme: 1 unless a size is set. */
+export const scaleOf = (theme: { size?: IslandSize }) => (theme.size ? SIZES[theme.size].scale : 1);
 
 export type Weight = NonNullable<TextStyle['weight']>;
 
@@ -200,7 +226,7 @@ export interface IslandTemplate {
 
 export type IslandState = Record<string, string | number | boolean | null | undefined>;
 
-export const DEFAULT_THEME: Required<Omit<IslandTheme, 'light' | 'dark'>> = {
+export const DEFAULT_THEME: Required<Omit<IslandTheme, 'light' | 'dark' | 'size'>> & Pick<IslandTheme, 'size'> = {
   background: '#000000',
   foreground: '#FFFFFF',
   /** iOS secondary label on black. */
@@ -214,6 +240,8 @@ export const DEFAULT_THEME: Required<Omit<IslandTheme, 'light' | 'dark'>> = {
   gradient: [],
   fonts: {},
   material: 'solid',
+  ghostOpacity: 0.4,
+  hideInFullscreen: true,
   aura: '',
 };
 

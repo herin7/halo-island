@@ -7,7 +7,7 @@ import Animated, { Easing, FadeIn, FadeInDown, FadeOut, FadeOutUp, LinearTransit
 import { Arc, Bars, Icon, Pet, Quiet, Ring, Sky, Sparkline, Timeline, alpha, clamp, useQuiet } from './graphics';
 import { placeIsland } from './geometry';
 import { Active, AssetSource, Cutout, emitAction, focus, native, nativeJson, resolveAsset, setState, springOf, store } from './island';
-import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTemplate, IslandTheme, Motion, Num, TextStyle, fill, fontFor, num, nums, on, resolveTheme, tracking, visible } from './spec';
+import { DEFAULT_THEME, Effect, IslandNode, IslandState, IslandTemplate, IslandTheme, Motion, Num, TextStyle, fill, fontFor, num, nums, on, resolveTheme, scaleOf, tracking, visible } from './spec';
 
 // region Optional modules — each is used only when the app already ships it.
 
@@ -279,8 +279,8 @@ function textStyle(s: TextStyle | undefined, theme: Theme): RNTextStyle {
   const family = (s?.font === 'monospace' && Platform.OS === 'ios' ? 'Menlo' : s?.font) ?? fontFor(theme.fonts, s?.weight ?? 'medium');
   return {
     color: s?.color ?? theme.foreground,
-    fontSize: s?.size ?? 14,
-    letterSpacing: tracking(s?.size ?? 14),
+    fontSize: (s?.size ?? 14) * scaleOf(theme),
+    letterSpacing: tracking((s?.size ?? 14) * scaleOf(theme)),
     // A font file already carries its weight; asking for another would fake-bold it.
     fontWeight: family ? undefined : WEIGHT[s?.weight ?? 'medium'],
     fontVariant: s?.mono ? ['tabular-nums'] : undefined,
@@ -984,7 +984,8 @@ function Island({ entry, leaving, bubble, placement, base, motion, dim, debugCut
       width: w.value + pull * 0.35 + kick.value * 14,
       height: h.value + pull * 0.45 + squeeze * 0.2 + kick.value * 3,
       borderRadius: radius.value,
-      opacity: opacity.value,
+      // Ghost rests see-through and turns solid as it opens.
+      opacity: opacity.value * (theme.material === 'ghost' ? theme.ghostOpacity + (1 - theme.ghostOpacity) * Math.min(1, open.value) : 1),
       borderColor: theme.glow ? interpolateColor(glow.value, [0, 1], [theme.border, theme.glow]) : theme.material === 'glass' ? 'rgba(255,255,255,0.22)' : theme.border,
       borderWidth: theme.glow ? 1.5 : theme.material === 'glass' ? 1 : StyleSheet.hairlineWidth,
       transform: [{ translateX: dragX.value }, { scale: 1 - press.value * 0.035 }],
