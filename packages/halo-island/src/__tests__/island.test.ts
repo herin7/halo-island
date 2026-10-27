@@ -6,6 +6,7 @@ mock.module('react-native', () => ({
   Platform: { OS: 'ios' },
   Appearance: { getColorScheme: () => 'dark' },
   AppRegistry: { registerHeadlessTask: () => {} },
+  AppState: { addEventListener: () => ({ remove() {} }) },
   Image: { resolveAssetSource: () => null },
   // #RRGGBB -> 0xAARRGGBB like the real processColor.
   processColor: (c: string) => (/^#[0-9a-f]{6}$/i.test(c) ? (0xff000000 | parseInt(c.slice(1), 16)) >>> 0 : c),

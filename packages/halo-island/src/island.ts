@@ -1,5 +1,5 @@
 import { requireOptionalNativeModule } from 'expo';
-import { AppRegistry, Appearance, Image, Platform, processColor } from 'react-native';
+import { AppRegistry, AppState, Appearance, Image, Platform, processColor } from 'react-native';
 
 import { IslandState, IslandTemplate, Motion, payloadSize, resolveTheme } from './spec';
 
@@ -19,6 +19,7 @@ interface NativeHaloIsland {
   end(id: string): void;
   endAll(): void;
   capabilities(): Capabilities;
+  dodge?(mode: string, durationMs: number): void;
   requestNotificationPermission(): Promise<unknown>;
   requestOverlayPermission?(): Promise<boolean>;
   openLiveUpdateSettings?(): void;
@@ -91,7 +92,7 @@ function changed() {
 /** Android's overlay already covers the app, so the in-app copy would be a duplicate. */
 function showsInApp(a: Active) {
   if (a.options.inApp === false) return false;
-  return !(Platform.OS === 'android' && a.options.overlay && native?.capabilities().overlay);
+  return !(Platform.OS === 'android' && a.options.overlay && capabilities().overlay);
 }
 
 export const store = {
@@ -238,6 +239,7 @@ export function start(template: IslandTemplate, state: IslandState = {}, options
       changed();
     },
     end() {
+      if (timer) clearTimeout(timer);
       if (!islands.delete(id)) return;
       native?.end(id);
       changed();
@@ -247,7 +249,7 @@ export function start(template: IslandTemplate, state: IslandState = {}, options
     },
   };
   // Ends this start only: if the id was started again meanwhile, the newer island stays.
-  if (options.duration != null) setTimeout(() => islands.get(id) === entry && live.end(), options.duration);
+  const timer = options.duration != null ? setTimeout(() => islands.get(id) === entry && live.end(), options.duration) : null;
   return live;
 }
 
@@ -277,8 +279,22 @@ export function endAll() {
 /** The camera hole at the top of the app window (dp), as this device reports it. Handy in bug reports. */
 export const getCutout = (): Cutout | null => native?.getCutout() ?? null;
 
+// Permissions only change while the user is in Settings, so ask native once per foreground.
+let cachedCapabilities: Capabilities | null = null;
+AppState.addEventListener('change', (state) => {
+  if (state !== 'active') return;
+  cachedCapabilities = null;
+  changed();
+});
+
 export const capabilities = (): Capabilities =>
-  native?.capabilities() ?? { liveActivities: false, liveUpdates: false, notifications: false, overlay: false };
+  (cachedCapabilities ??= native?.capabilities() ?? { liveActivities: false, liveUpdates: false, notifications: false, overlay: false });
+
+/**
+ * Android overlay: get out of the way for a moment, e.g. while a heads-up notification shows.
+ * `fade` turns see-through and lets touches through; `hide` slides it off screen.
+ */
+export const dodge = (mode: 'fade' | 'hide' = 'fade', durationMs = 5000) => native?.dodge?.(mode, durationMs);
 
 /** Asks for everything `start` needs: notifications, and the overlay permission when requested. */
 export async function requestPermissions(opts: { overlay?: boolean } = {}): Promise<Capabilities> {
