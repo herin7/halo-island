@@ -234,6 +234,32 @@ theme: {
 
 Glass uses `expo-glass-effect` when the device supports it, then `expo-blur`, and falls back to a translucent fill when neither is installed.
 
+## Staying out of the way
+
+```ts
+theme: {
+  size: 's',             // s | m | l: scales height, text and icons (s is a slim 30pt pill)
+  material: 'ghost',     // see-through at rest, solid while open
+  ghostOpacity: 0.4,
+  hideInFullscreen: true // Android overlay steps aside during video and games (default)
+}
+```
+
+`dodge('fade' | 'hide', ms)` moves the Android overlay out of the way for a moment, for example while a heads-up notification shows. While faded or hidden, taps pass through to the app underneath.
+
+## Driving islands from Kotlin
+
+Native code (a notification listener, a receiver, an FCM service) can run islands without starting JS:
+
+```kotlin
+HaloIsland.start(context, "ride", JSONObject(templateJson), JSONObject().put("eta", "4 min"))
+HaloIsland.update(context, "ride", JSONObject().put("eta", "2 min"))
+HaloIsland.actionHandler = { id, action -> handled(id, action) } // true = consumed, JS never sees it
+HaloIsland.attachHost(listenerService) // host the overlay without a foreground-service notification
+```
+
+Get `templateJson` from JS with `toNative(template)`.
+
 ## Several islands at once
 
 Every `start()` is its own island. The newest one owns the island, and the one before it shrinks to a round **bubble** beside it, the way iOS shows two Live Activities. Tap the bubble to swap them, or call `focus(id)`. When an island ends, the previous one takes its place again.
