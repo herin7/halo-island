@@ -1,6 +1,6 @@
 {
   "name": "halo-island",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Dynamic Island for React Native: an in-app island on iOS, Android and web, an Android island over other apps, and Android Live Updates — from one JSON design.",
   "main": "src/index.ts",
   "types": "src/index.ts",
