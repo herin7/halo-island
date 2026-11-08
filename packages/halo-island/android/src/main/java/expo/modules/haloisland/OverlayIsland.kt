@@ -52,6 +52,8 @@ internal class OverlayIsland(private val context: Context) {
   private val compactHost = FrameLayout(context)
   private val expandedHost = FrameLayout(context)
   private var compactWidth = compactMinWidth
+  /** Where the compact pill goes, from the camera and the theme; refreshed on render and rotation. */
+  private var frame = Frame("below", 0f, 0f, 38f, 16f, null)
   private var isExpanded = false
   private var entry: Islands.Entry? = null
   private val values = mutableMapOf<String, Float>()
@@ -137,13 +139,11 @@ internal class OverlayIsland(private val context: Context) {
       WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
       WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
       PixelFormat.TRANSLUCENT
     ).apply {
-      gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-      // Overlays can't receive touches in the status bar region, so the pill sits just below it,
-      // and below the camera on devices whose notch runs deeper than the status bar.
-      y = topOffset()
+      gravity = Gravity.TOP or Gravity.LEFT
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
       }
@@ -160,16 +160,17 @@ internal class OverlayIsland(private val context: Context) {
     spring(container, 1f, 1f)
   }
 
-  // Overlays can't receive touches in the status bar region, so the pill sits just below it,
-  // and below the camera on devices whose notch runs deeper than the status bar.
-  private fun topOffset() = max(statusBarInset, cutoutBottom()) + dp(4)
+  private fun place(theme: Theme) {
+    frame = Placement.place(
+      Placement.hole(context), context.resources.displayMetrics.widthPixels / density, statusBarInset / density,
+      Placement.safeTop(context), theme.compactHeight, theme.placement, theme.offsetX, theme.offsetY,
+    )
+  }
 
   /** Rotation, folding and resizing move the status bar and change the width under a live island. */
   private fun reposition() {
     val container = root ?: return
-    val p = params ?: return
-    p.y = topOffset()
-    runCatching { windowManager.updateViewLayout(container, p) }
+    if (params == null) return
     render()
   }
 
@@ -232,6 +233,7 @@ internal class OverlayIsland(private val context: Context) {
     val container = root ?: return
     val theme = Theme(current.template.optJSONObject("theme"))
     rendered = current.state.toString()
+    place(theme)
     val renderer = Renderer(context, theme, current.state, values) { action ->
       if (action == "close") return@Renderer setExpanded(false)
       HaloIslandModule.dispatch(context, current.id, action)
@@ -244,7 +246,7 @@ internal class OverlayIsland(private val context: Context) {
     compactHost.addView(compactRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
     compactRow.measure(unspecified, unspecified)
-    compactHeight = max(dp(theme.compactHeight.toInt()), compactRow.measuredHeight + dp(6))
+    compactHeight = max(dpf(frame.height), compactRow.measuredHeight + dp(6))
     compactWidth = compactRow.measuredWidth.coerceIn(compactMinWidth, expandedWidth)
 
     // Expanded = the compact row as a header, then the body — the same layout iOS uses.
@@ -322,7 +324,8 @@ internal class OverlayIsland(private val context: Context) {
       gravity = Gravity.CENTER_VERTICAL
       setPadding(dp(14), 0, dp(14), 0)
       renderer.build(compact?.optJSONObject("leading"), "${path}0")?.let { addView(it) }
-      addView(View(context), LinearLayout.LayoutParams(dp(16), 1, 1f))
+      // Wrapped around the camera, the middle stays empty so nothing sits under the lens.
+      addView(View(context), LinearLayout.LayoutParams(if (header) dp(16) else dpf(frame.gap), 1, 1f))
       if (!header) renderer.build(compact?.optJSONObject("trailing"), "${path}1")?.let { addView(it) }
     }
   }
@@ -332,9 +335,13 @@ internal class OverlayIsland(private val context: Context) {
     val p = params ?: return
     val width = if (isExpanded) expandedWidth else compactWidth
     val height = if (isExpanded) measuredExpandedHeight() else compactHeight
-    if (p.width == width && p.height == height) return
+    val x = (dpf(frame.centerX) - width / 2).coerceIn(0, max(0, context.resources.displayMetrics.widthPixels - width))
+    val y = max(0, dpf(frame.top))
+    if (p.width == width && p.height == height && p.x == x && p.y == y) return
     p.width = width
     p.height = height
+    p.x = x
+    p.y = y
     runCatching { windowManager.updateViewLayout(container, p) }
   }
 
@@ -499,12 +506,6 @@ internal class OverlayIsland(private val context: Context) {
 
   // endregion
 
-  /** The top cutout's safe inset in px: the line below which nothing touches the camera. */
-  private fun cutoutBottom(): Int {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0
-    return windowManager.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.displayCutout()).top
-  }
-
   /** Underdamped motion overshoots on purpose; anything near critical damping wants no flourishes. */
   private fun lively(): Boolean {
     val motion = entry?.template?.optJSONObject("motion") ?: return entry?.template?.optString("motion") != "none"
@@ -541,4 +542,5 @@ internal class OverlayIsland(private val context: Context) {
 
   private fun animationsEnabled() = ValueAnimator.areAnimatorsEnabled()
   private fun dp(value: Int) = (value * density).toInt()
+  private fun dpf(value: Float) = (value * density).toInt()
 }
