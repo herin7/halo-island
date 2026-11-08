@@ -146,6 +146,16 @@ export interface IslandTheme {
    * Sets compactHeight; unset keeps the original 37pt look.
    */
   size?: IslandSize;
+  /** Free resize on top of `size`, 0.7–1.4: multiplies height, text and icons. */
+  scale?: number;
+  /**
+   * Android overlay position. `auto` wraps a centred camera and otherwise sits below the status
+   * bar; `camera` and `below` force one. Default `below`.
+   */
+  placement?: 'auto' | 'camera' | 'below';
+  /** Android overlay: the user's nudge from the computed position, dp. */
+  offsetX?: number;
+  offsetY?: number;
   /** Border breathes in this color. */
   glow?: Color;
   /** Island fill as a gradient (overrides background). */
@@ -177,7 +187,9 @@ export function resolveTheme(theme: IslandTheme | undefined, scheme: string | nu
   if (!theme) return theme;
   const { light, dark, ...base } = theme;
   const resolved: IslandTheme = { ...base, ...(scheme === 'dark' ? dark : scheme === 'light' ? light : undefined) };
-  return resolved.size ? { ...resolved, compactHeight: SIZES[resolved.size].height } : resolved;
+  if (!resolved.size && resolved.scale == null) return resolved;
+  const height = resolved.size ? SIZES[resolved.size].height : resolved.compactHeight ?? 37;
+  return { ...resolved, compactHeight: height * userScale(resolved) };
 }
 
 export type IslandSize = 's' | 'm' | 'l';
@@ -190,7 +202,9 @@ export const SIZES: Record<IslandSize, { height: number; scale: number }> = {
 };
 
 /** Content scale for a theme: 1 unless a size is set. */
-export const scaleOf = (theme: { size?: IslandSize }) => (theme.size ? SIZES[theme.size].scale : 1);
+export const scaleOf = (theme: { size?: IslandSize; scale?: number }) => (theme.size ? SIZES[theme.size].scale : 1) * userScale(theme);
+
+const userScale = (theme: { scale?: number }) => Math.min(1.4, Math.max(0.7, theme.scale ?? 1));
 
 export type Weight = NonNullable<TextStyle['weight']>;
 
@@ -226,7 +240,10 @@ export interface IslandTemplate {
 
 export type IslandState = Record<string, string | number | boolean | null | undefined>;
 
-export const DEFAULT_THEME: Required<Omit<IslandTheme, 'light' | 'dark' | 'size'>> & Pick<IslandTheme, 'size'> = {
+/** Optional theme keys with no default. */
+type OverlayKeys = 'size' | 'scale' | 'placement' | 'offsetX' | 'offsetY';
+
+export const DEFAULT_THEME: Required<Omit<IslandTheme, 'light' | 'dark' | OverlayKeys>> & Pick<IslandTheme, OverlayKeys> = {
   background: '#000000',
   foreground: '#FFFFFF',
   /** iOS secondary label on black. */

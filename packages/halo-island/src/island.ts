@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import { AppRegistry, AppState, Appearance, Image, Platform, processColor } from 'react-native';
 
-import { IslandState, IslandTemplate, Motion, payloadSize, resolveTheme } from './spec';
+import { IslandState, IslandTemplate, IslandTheme, Motion, payloadSize, resolveTheme } from './spec';
 
 export interface Capabilities {
   /** iOS: Live Activities allowed on this device and enabled by the user. */
@@ -25,11 +25,23 @@ interface NativeHaloIsland {
   openLiveUpdateSettings?(): void;
   consumePendingActions(): { id: string; action: string }[];
   getCutout(): Cutout | null;
+  getOverlayFrame?(theme: string | null): OverlayFrame;
   addListener?(event: 'onAction', listener: (e: { id: string; action: string }) => void): { remove(): void };
 }
 
 /** The camera hole in window dp; `safeTop` is the line below which nothing touches it. */
 export interface Cutout { x: number; y: number; width: number; height: number; safeTop?: number }
+
+/** Where the Android overlay's compact pill sits, in display dp. `wrap` = around the camera. */
+export interface OverlayFrame {
+  mode: 'wrap' | 'below';
+  centerX: number;
+  top: number;
+  height: number;
+  /** Width kept empty in the middle for the lens. */
+  gap: number;
+  hole: { x: number; y: number; width: number; height: number } | null;
+}
 
 /** Missing in Expo Go and on web: the in-app island still works, system surfaces no-op. */
 export const native = requireOptionalNativeModule<NativeHaloIsland>('HaloIsland');
@@ -278,6 +290,10 @@ export function endAll() {
 
 /** The camera hole at the top of the app window (dp), as this device reports it. Handy in bug reports. */
 export const getCutout = (): Cutout | null => native?.getCutout() ?? null;
+
+/** Android: where the overlay pill sits for `theme` (placement, offsets, size), for drawing a matching editor. Null elsewhere. */
+export const getOverlayFrame = (theme?: IslandTheme): OverlayFrame | null =>
+  native?.getOverlayFrame?.(theme ? JSON.stringify(theme) : null) ?? null;
 
 // Permissions only change while the user is in Settings, so ask native once per foreground.
 let cachedCapabilities: Capabilities | null = null;

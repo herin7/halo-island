@@ -83,3 +83,10 @@ test('default theme rests visible and hides in fullscreen', () => {
   expect(DEFAULT_THEME.ghostOpacity).toBe(0.4);
   expect(DEFAULT_THEME.hideInFullscreen).toBe(true);
 });
+
+test('free scale multiplies size and is clamped', () => {
+  expect(resolveTheme({ size: 's', scale: 1.2 }, 'dark')!.compactHeight).toBeCloseTo(SIZES.s.height * 1.2);
+  expect(resolveTheme({ scale: 5 }, 'dark')!.compactHeight).toBeCloseTo(37 * 1.4);
+  expect(scaleOf({ size: 'm', scale: 0.5 })).toBeCloseTo(SIZES.m.scale * 0.7);
+  expect(resolveTheme({ accent: '#fff' }, 'dark')!.compactHeight).toBeUndefined();
+});

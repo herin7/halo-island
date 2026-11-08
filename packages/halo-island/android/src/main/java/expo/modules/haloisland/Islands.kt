@@ -47,6 +47,13 @@ object HaloIsland {
   /** Sees every action before JS does; return true to consume it. */
   @Volatile var actionHandler: ((id: String, action: String) -> Boolean)? = null
 
+  /** Where the overlay's compact pill sits with [theme] (display dp), so an app can draw a placement editor that matches. */
+  fun frame(context: Context, theme: JSONObject?): Frame {
+    val t = Theme(theme)
+    val d = context.resources.displayMetrics
+    return Placement.place(Placement.hole(context), d.widthPixels / d.density, Placement.statusBar(context), Placement.safeTop(context), t.compactHeight, t.placement, t.offsetX, t.offsetY)
+  }
+
   /** True when the overlay is actually on screen right now. */
   fun overlayShowing(): Boolean = Islands.overlay()?.isShowing == true
 }

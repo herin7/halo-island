@@ -162,6 +162,15 @@ class HaloIslandModule : Module() {
       )
     }
 
+    /** The overlay's compact frame for a theme, in display dp. */
+    Function("getOverlayFrame") { themeJson: String? ->
+      val f = HaloIsland.frame(context, themeJson?.let { runCatching { JSONObject(it) }.getOrNull() })
+      mapOf(
+        "mode" to f.mode, "centerX" to f.centerX, "top" to f.top, "height" to f.height, "gap" to f.gap,
+        "hole" to f.hole?.let { mapOf("x" to it.x, "y" to it.y, "width" to it.width, "height" to it.height) },
+      )
+    }
+
     View(HaloIconView::class) {
       Prop("name") { view: HaloIconView, name: String? -> view.setName(name) }
       Prop("path") { view: HaloIconView, path: String? -> view.setPath(path) }
