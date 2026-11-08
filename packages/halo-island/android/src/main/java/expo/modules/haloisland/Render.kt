@@ -47,9 +47,16 @@ internal class Theme(json: JSONObject?) {
   val radius = json?.optDouble("radius", 32.0)?.toFloat() ?: 32f
   /** `s`/`m`/`l` scale the whole island (height, text, icons); unset keeps the original look. */
   private val size = SIZES[json?.optString("size")]
-  val scale = size?.second ?: 1f
+  /** Free resize on top of `size`, 0.7..1.4. */
+  private val userScale = json?.optDouble("scale", 1.0)?.toFloat()?.coerceIn(0.7f, 1.4f) ?: 1f
+  val scale = (size?.second ?: 1f) * userScale
   /** Compact pill height in dp; the pill never gets shorter than its content. */
-  val compactHeight = size?.first ?: json?.optDouble("compactHeight", 38.0)?.toFloat() ?: 38f
+  val compactHeight = (size?.first ?: json?.optDouble("compactHeight", 38.0)?.toFloat() ?: 38f) * userScale
+  /** Overlay position: `auto`, `camera` or `below`; see [Placement]. */
+  val placement = json?.optString("placement")?.takeIf { it.isNotEmpty() } ?: "below"
+  /** The user's nudge from the computed position, dp. */
+  val offsetX = json?.optDouble("offsetX", 0.0)?.toFloat() ?: 0f
+  val offsetY = json?.optDouble("offsetY", 0.0)?.toFloat() ?: 0f
   /** `solid`, `glass` (translucent with a lit edge) or `ghost` (see-through, for staying out of the way). */
   val material = json?.optString("material")?.takeIf { it.isNotEmpty() } ?: "solid"
   /** How visible a ghost island is, 0..1. */

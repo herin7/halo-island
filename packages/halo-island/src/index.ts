@@ -1,6 +1,6 @@
 export * from './spec';
-export { island, start, endAll, onAction, focus, setState, get, registerAssets, resolveAsset, capabilities, dodge, getCutout, requestPermissions, openLiveUpdateSettings, asset, toNative } from './island';
-export type { AssetSource, Capabilities, LiveIsland, StartOptions } from './island';
+export { island, start, endAll, onAction, focus, setState, get, registerAssets, resolveAsset, capabilities, dodge, getCutout, getOverlayFrame, requestPermissions, openLiveUpdateSettings, asset, toNative } from './island';
+export type { AssetSource, Capabilities, LiveIsland, OverlayFrame, StartOptions } from './island';
 export { HaloIslandHost, IslandPreview } from './host';
 export type { HostProps, Placement } from './host';
 export { lookAt } from './graphics';
