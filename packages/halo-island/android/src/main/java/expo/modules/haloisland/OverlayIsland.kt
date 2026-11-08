@@ -319,15 +319,30 @@ internal class OverlayIsland(private val context: Context) {
   /** `header`: the expanded top row keeps only the leading mark; the body restates the trailing value. */
   private fun compactRow(renderer: Renderer, current: Islands.Entry, path: String, header: Boolean = false): LinearLayout {
     val compact = current.template.optJSONObject("compact")
+    val wrap = frame.mode == "wrap" && !header
     return LinearLayout(context).apply {
       orientation = LinearLayout.HORIZONTAL
-      gravity = Gravity.CENTER_VERTICAL
+      gravity = Gravity.CENTER_VERTICAL or (if (wrap) Gravity.CENTER_HORIZONTAL else 0)
       setPadding(dp(14), 0, dp(14), 0)
-      renderer.build(compact?.optJSONObject("leading"), "${path}0")?.let { addView(it) }
-      // Wrapped around the camera, the middle stays empty so nothing sits under the lens.
-      addView(View(context), LinearLayout.LayoutParams(if (header) dp(16) else dpf(frame.gap), 1, 1f))
-      if (!header) renderer.build(compact?.optJSONObject("trailing"), "${path}1")?.let { addView(it) }
+      val leading = renderer.build(compact?.optJSONObject("leading"), "${path}0")
+      val trailing = if (header) null else renderer.build(compact?.optJSONObject("trailing"), "${path}1")
+      // Around the camera both sides get the same width, so the empty middle sits on the lens.
+      val side = if (wrap) listOfNotNull(leading, trailing).maxOfOrNull { it.measureWidth() } ?: 0 else 0
+      leading?.let { addView(if (wrap) slot(it, side, Gravity.START) else it) }
+      addView(View(context), LinearLayout.LayoutParams(if (wrap) dpf(frame.gap) else dp(16), 1, if (wrap) 0f else 1f))
+      trailing?.let { addView(if (wrap) slot(it, side, Gravity.END) else it) }
     }
+  }
+
+  private fun View.measureWidth(): Int {
+    val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+    measure(unspecified, unspecified)
+    return measuredWidth
+  }
+
+  private fun slot(child: View, width: Int, gravity: Int) = FrameLayout(context).apply {
+    layoutParams = LinearLayout.LayoutParams(width, LinearLayout.LayoutParams.WRAP_CONTENT)
+    addView(child, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, gravity or Gravity.CENTER_VERTICAL))
   }
 
   private fun resize() {
